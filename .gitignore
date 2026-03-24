@@ -1,0 +1,94 @@
+# =========================
+# ROS 2 workspace
+# =========================
+build/
+install/
+log/
+
+# colcon / ament
+.colcon/
+.colcon_install_layout
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# =========================
+# C / C++ / CMake
+# =========================
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+compile_commands.json
+*.o
+*.obj
+*.out
+*.a
+*.la
+*.lo
+*.dll
+*.dylib
+*.exe
+
+# =========================
+# ROS message / generated
+# =========================
+*.msg.cpp
+*.msg.h
+*.srv.cpp
+*.srv.h
+
+# =========================
+# IDE / Editor
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Logs / temp
+# =========================
+*.log
+*.tmp
+*.bak
+
+# =========================
+# Jupyter
+# =========================
+.ipynb_checkpoints/
+
+# =========================
+# Optional: model / data artifacts
+# Uncomment if needed
+# =========================
+# data/
+# outputs/
+# checkpoints/
+# *.pt
+# *.pth
+# *.onnx
+# *.engine
