@@ -1,12 +1,8 @@
-ssh -T git@github-second
-cd ~/capstion_integration_ws
-git init
-git@github.com:helloimsuhyun/capston_h3c_integration.git
+통합 런치 각각 실행하기
+1. vision 패키지 런치
 
-git config user.name "suhyun"
-git config user.email "chsuk02@hanyang.ac.kr"
+ros2 launch patrol_vision system.launch.py
 
-git add .
-git commit -m "init"
-git branch -M main
-git push -u origin main
+2. 오디오 패키지 런치
+ros2 launch patrol_bridge bringup.launch.py
+ros2 launch security_audio_system bringup.launch.py

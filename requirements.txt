@@ -1,0 +1,7 @@
+requests
+numpy
+soundfile
+tensorflow
+tensorflow-hub
+python-can
+opencv-python

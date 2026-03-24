@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>capston_bringup</name>
+  <version>0.0.0</version>
+  <description>Bringup package for H3C Capston Integration</description>
+  <maintainer email="hsuk02@hanyang.ac.kr">suhyun</maintainer>
+  <license>TODO: License declaration</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>patrol_vision</exec_depend>
+  <exec_depend>patrol_bridge</exec_depend>
+  <exec_depend>security_audio_system</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
