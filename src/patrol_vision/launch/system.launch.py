@@ -25,7 +25,7 @@ def generate_launch_description():
 		DeclareLaunchArgument(
 					'calib_file',
 					# 파일 위치에 맞춰주기
-					default_value='/home/choisuhyun/scene_ad_for_patrol_robot/data/camera_intrinsics.yaml'
+					default_value='/home/chan/capston_h3c_integration/data/camera_intrinsics.yaml'
 				),
 				
 		Node(
