@@ -27,6 +27,7 @@ setup(
             'capture_sender = patrol_vision.capture_sender:main',
             'patrol_http_bridge = patrol_vision.patrol_http_bridge:main',
             'send_test = patrol_vision.send_test:main',
+            'camera_calib_cli_node = patrol_vision.camera_calib_cli_node:main',
         ],
     },
 )
