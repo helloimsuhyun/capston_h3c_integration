@@ -1,5 +1,3 @@
-#camera_calib_cli_node.py
-
 import os
 import cv2
 import time
@@ -12,73 +10,69 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
-
-# ArUco 관련 모듈 추가
 import cv2.aruco as aruco
 
 class CameraCalibCliNode(Node):
     def __init__(self):
-            super().__init__("camera_calib_cli_node")
+        super().__init__("camera_calib_cli_node")
 
-            # 1. 파라미터 선언 및 로드 (이게 제일 먼저!)
-            self.declare_parameter("image_topic", "/camera/color/image_raw")
-            self.declare_parameter("save_dir", "./calib_images")
-            self.declare_parameter("output_yaml", "./camera_intrinsics.yaml")
-            self.declare_parameter("output_npz", "./camera_intrinsics.npz")
-            self.declare_parameter("cols", 11)              
-            self.declare_parameter("rows", 6)               
-            self.declare_parameter("square_size", 0.05)     
-            self.declare_parameter("marker_size", 0.037)    
-            self.declare_parameter("preview", True)
+        # 1. 파라미터 선언 및 로드
+        self.declare_parameter("image_topic", "/camera/color/image_raw")
+        self.declare_parameter("save_dir", "./calib_images")
+        self.declare_parameter("output_yaml", "./camera_intrinsics.yaml")
+        self.declare_parameter("cols", 11)              
+        self.declare_parameter("rows", 6)               
+        self.declare_parameter("square_size", 0.05)     
+        self.declare_parameter("marker_size", 0.037)    
+        self.declare_parameter("preview", True)
 
-            self.save_dir = str(self.get_parameter("save_dir").value)
-            self.output_yaml = str(self.get_parameter("output_yaml").value)
-            self.output_npz = str(self.get_parameter("output_npz").value)
-            self.cols = int(self.get_parameter("cols").value)
-            self.rows = int(self.get_parameter("rows").value)
-            self.square_size = float(self.get_parameter("square_size").value)
-            self.marker_size = float(self.get_parameter("marker_size").value)
-            self.preview = bool(self.get_parameter("preview").value)
+        self.save_dir = str(self.get_parameter("save_dir").value)
+        self.output_yaml = str(self.get_parameter("output_yaml").value)
+        self.cols = int(self.get_parameter("cols").value)
+        self.rows = int(self.get_parameter("rows").value)
+        self.square_size = float(self.get_parameter("square_size").value)
+        self.marker_size = float(self.get_parameter("marker_size").value)
+        self.preview = bool(self.get_parameter("preview").value)
 
-            # 2. [핵심] 보드(Board) 객체를 먼저 생성합니다.
-            self.dictionary = aruco.getPredefinedDictionary(aruco.DICT_6X6_250)
-            self.board = aruco.CharucoBoard(
-                (self.cols, self.rows), 
-                self.square_size, 
-                self.marker_size, 
-                self.dictionary
-            )
+        # 2. Charuco 보드 및 Detector 설정 (순서 고정)
+        self.dictionary = aruco.getPredefinedDictionary(aruco.DICT_6X6_250)
+        self.board = aruco.CharucoBoard(
+            (self.cols, self.rows), 
+            self.square_size, 
+            self.marker_size, 
+            self.dictionary
+        )
 
-            # 3. 그 다음에 감지기(Detector)를 생성합니다.
-            self.params = aruco.DetectorParameters()
-            self.params.adaptiveThreshWinSizeMin = 3
-            self.params.adaptiveThreshWinSizeMax = 23
-            self.params.adaptiveThreshWinSizeStep = 10
-            self.params.minMarkerPerimeterRate = 0.03 
+        self.params = aruco.DetectorParameters()
+        self.params.adaptiveThreshWinSizeMin = 3
+        self.params.adaptiveThreshWinSizeMax = 23
+        self.params.adaptiveThreshWinSizeStep = 10
+        self.params.minMarkerPerimeterRate = 0.03 
 
-            # 이제 self.board가 존재하므로 에러가 나지 않습니다.
-            self.detector = aruco.CharucoDetector(self.board, detectorParams=self.params)
+        # [수정] Detector는 여기서 한 번만 생성합니다.
+        self.detector = aruco.CharucoDetector(self.board, detectorParams=self.params)
 
-            # 터미널 로깅용 상태 변수 추가
-            self.last_found_status = False
+        # 터미널 로깅용 상태 변수
+        self.last_found_status = False
 
-            # 나머지 초기화 로직 (디렉토리 생성 등)
-            Path(self.save_dir).mkdir(parents=True, exist_ok=True)
-            self.debug_corners_dir = Path(self.save_dir) / "debug_corners"
-            self.debug_corners_dir.mkdir(parents=True, exist_ok=True)
+        # 나머지 초기화
+        Path(self.save_dir).mkdir(parents=True, exist_ok=True)
+        self.debug_corners_dir = Path(self.save_dir) / "debug_corners"
+        self.debug_corners_dir.mkdir(parents=True, exist_ok=True)
 
-            self.bridge = CvBridge()
-            self.latest_frame = None
-            self.lock = threading.Lock()
-            self.cmd_queue = queue.Queue()
+        self.bridge = CvBridge()
+        self.latest_frame = None
+        self.lock = threading.Lock()
+        self.cmd_queue = queue.Queue()
 
-            self.sub = self.create_subscription(Image, str(self.get_parameter("image_topic").value), self.image_callback, 10)
-            self.timer = self.create_timer(0.05, self.timer_callback)
+        self.sub = self.create_subscription(Image, str(self.get_parameter("image_topic").value), self.image_callback, 10)
+        self.timer = self.create_timer(0.05, self.timer_callback)
 
-            self.input_thread = threading.Thread(target=self.stdin_loop, daemon=True)
-            self.input_thread.start()
+        self.input_thread = threading.Thread(target=self.stdin_loop, daemon=True)
+        self.input_thread.start()
 
-            self.get_logger().info(f"🚀 Charuco Calib Started: {self.cols}x{self.rows}")
+        self.get_logger().info(f"🚀 Charuco Calib Started: {self.cols}x{self.rows}")
+        self.print_help()
 
     def print_help(self):
         print("\n================ Charuco Calibration CLI ================")
@@ -101,10 +95,7 @@ class CameraCalibCliNode(Node):
             self.latest_frame = frame.copy()
 
     def find_charuco(self, gray):
-        """Charuco 보드 감지 핵심 로직"""
-        charuco_corners, charuco_ids, marker_corners, marker_ids = self.detector.detectBoard(gray)
-        
-        # 코너가 최소 4개 이상 발견되어야 유효함
+        charuco_corners, charuco_ids, _, _ = self.detector.detectBoard(gray)
         if charuco_ids is not None and len(charuco_ids) >= 4:
             return True, charuco_corners, charuco_ids
         return False, None, None
@@ -124,7 +115,7 @@ class CameraCalibCliNode(Node):
         idx = len(list(Path(self.save_dir).glob("*.jpg")))
         out_path = os.path.join(self.save_dir, f"calib_{idx:03d}.jpg")
         cv2.imwrite(out_path, frame)
-        self.get_logger().info(f"saved: {out_path}")
+        self.get_logger().info(f"📸 saved: {out_path}")
 
     def run_calibration(self):
         image_paths = sorted([str(p) for p in Path(self.save_dir).glob("*.jpg")])
@@ -143,29 +134,22 @@ class CameraCalibCliNode(Node):
             if image_size is None: image_size = gray.shape[::-1]
 
             found, corners, ids = self.find_charuco(gray)
-
-            if found != self.last_found_status:
-                    if found:
-                        self.get_logger().info(f"✨ Charuco Board Detected! (Corners: {len(ids)})")
-                    else:
-                        self.get_logger().warn("❌ Board Lost")
-                    self.last_found_status = found
-
+            
+            # [수정] 여기서는 터미널 알림 status 체크를 하지 않습니다. (파일 처리이므로)
             if found:
                 all_charuco_corners.append(corners)
                 all_charuco_ids.append(ids)
-                
-                # 디버그 이미지 저장
                 vis = img.copy()
                 aruco.drawDetectedCornersCharuco(vis, corners, ids)
                 cv2.imwrite(str(self.debug_corners_dir / Path(path).name), vis)
                 self.get_logger().info(f"[OK] {path}")
+            else:
+                self.get_logger().warning(f"[MISS] {path}")
 
         if len(all_charuco_corners) < 10:
             self.get_logger().warning(f"Not enough valid images ({len(all_charuco_corners)})")
             return
 
-        # [수정] Charuco 전용 캘리브레이션 함수 사용
         rms, camera_matrix, dist_coeffs, rvecs, tvecs = aruco.calibrateCameraCharuco(
             charucoCorners=all_charuco_corners,
             charucoIds=all_charuco_ids,
@@ -175,7 +159,6 @@ class CameraCalibCliNode(Node):
             distCoeffs=None
         )
 
-        # YAML 저장
         fs = cv2.FileStorage(self.output_yaml, cv2.FILE_STORAGE_WRITE)
         fs.write("image_width", image_size[0])
         fs.write("image_height", image_size[1])
@@ -184,8 +167,7 @@ class CameraCalibCliNode(Node):
         fs.write("rms", float(rms))
         fs.release()
 
-        self.get_logger().info(f"Calibration Done! RMS: {rms:.6f}")
-        self.get_logger().info(f"Saved to: {self.output_yaml}")
+        self.get_logger().info(f"✅ Calibration Done! RMS: {rms:.6f}")
 
     def timer_callback(self):
         while not self.cmd_queue.empty():
@@ -202,15 +184,17 @@ class CameraCalibCliNode(Node):
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 found, corners, ids = self.find_charuco(gray)
                 
+                # [수정] 실시간 알림은 여기서만 수행합니다.
+                if found != self.last_found_status:
+                    if found:
+                        self.get_logger().info(f"✨ Charuco Board Detected! (Corners: {len(ids)})")
+                    else:
+                        self.get_logger().warn("❌ Board Lost")
+                    self.last_found_status = found
+
                 vis = frame.copy()
-                if found:
-                    aruco.drawDetectedCornersCharuco(vis, corners, ids)
-                    status = "Charuco Detected"
-                    color = (0, 255, 0)
-                else:
-                    status = "NOT Detected"
-                    color = (0, 0, 255)
-                
+                status, color = ("Detected", (0, 255, 0)) if found else ("NOT Detected", (0, 0, 255))
+                if found: aruco.drawDetectedCornersCharuco(vis, corners, ids)
                 cv2.putText(vis, status, (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 2)
                 cv2.imshow("Charuco_Calib_Preview", vis)
                 cv2.waitKey(1)
@@ -218,10 +202,8 @@ class CameraCalibCliNode(Node):
 def main():
     rclpy.init()
     node = CameraCalibCliNode()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
+    try: rclpy.spin(node)
+    except KeyboardInterrupt: pass
     finally:
         cv2.destroyAllWindows()
         node.destroy_node()
