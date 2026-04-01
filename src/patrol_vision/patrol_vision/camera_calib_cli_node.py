@@ -18,73 +18,67 @@ import cv2.aruco as aruco
 
 class CameraCalibCliNode(Node):
     def __init__(self):
-        super().__init__("camera_calib_cli_node")
+            super().__init__("camera_calib_cli_node")
 
-        # [수정] 보드 사양에 맞춘 기본값 변경
-        self.declare_parameter("image_topic", "/camera/color/image_raw")
-        self.declare_parameter("save_dir", "./calib_images")
-        self.declare_parameter("output_yaml", "./camera_intrinsics.yaml")
-        self.declare_parameter("output_npz", "./camera_intrinsics.npz")
-        
-        # 6x11 보드는 가로 사각형 11개, 세로 사각형 6개이므로 
-        # OpenCV 내부 코너 기준은 가로 10개, 세로 5개입니다.
-        self.declare_parameter("cols", 11)              # 전체 사각형 열 개수
-        self.declare_parameter("rows", 6)               # 전체 사각형 행 개수
-        self.declare_parameter("square_size", 0.05)     # 50mm -> 0.05m
-        self.declare_parameter("marker_size", 0.037)    # 37mm -> 0.037m
-        self.declare_parameter("preview", True)
+            # 1. 파라미터 선언 및 로드 (이게 제일 먼저!)
+            self.declare_parameter("image_topic", "/camera/color/image_raw")
+            self.declare_parameter("save_dir", "./calib_images")
+            self.declare_parameter("output_yaml", "./camera_intrinsics.yaml")
+            self.declare_parameter("output_npz", "./camera_intrinsics.npz")
+            self.declare_parameter("cols", 11)              
+            self.declare_parameter("rows", 6)               
+            self.declare_parameter("square_size", 0.05)     
+            self.declare_parameter("marker_size", 0.037)    
+            self.declare_parameter("preview", True)
 
-        self.params = aruco.DetectorParameters()
+            self.save_dir = str(self.get_parameter("save_dir").value)
+            self.output_yaml = str(self.get_parameter("output_yaml").value)
+            self.output_npz = str(self.get_parameter("output_npz").value)
+            self.cols = int(self.get_parameter("cols").value)
+            self.rows = int(self.get_parameter("rows").value)
+            self.square_size = float(self.get_parameter("square_size").value)
+            self.marker_size = float(self.get_parameter("marker_size").value)
+            self.preview = bool(self.get_parameter("preview").value)
 
-        # 마커 경계선을 더 정밀하게 찾기 위한 설정
-        self.params.adaptiveThreshWinSizeMin = 3
-        self.params.adaptiveThreshWinSizeMax = 23
-        self.params.adaptiveThreshWinSizeStep = 10
-        # 마커가 작게 보일 때를 대비한 최소 크기 설정 (0.03 = 화면의 3% 이상)
-        self.params.minMarkerPerimeterRate = 0.03 
+            # 2. [핵심] 보드(Board) 객체를 먼저 생성합니다.
+            self.dictionary = aruco.getPredefinedDictionary(aruco.DICT_6X6_250)
+            self.board = aruco.CharucoBoard(
+                (self.cols, self.rows), 
+                self.square_size, 
+                self.marker_size, 
+                self.dictionary
+            )
 
-        # detector 생성 시 파라미터 적용
-        self.detector = aruco.CharucoDetector(self.board, detectorParams=self.params)
+            # 3. 그 다음에 감지기(Detector)를 생성합니다.
+            self.params = aruco.DetectorParameters()
+            self.params.adaptiveThreshWinSizeMin = 3
+            self.params.adaptiveThreshWinSizeMax = 23
+            self.params.adaptiveThreshWinSizeStep = 10
+            self.params.minMarkerPerimeterRate = 0.03 
 
-        # 파라미터 로드
-        image_topic = str(self.get_parameter("image_topic").value)
-        self.save_dir = str(self.get_parameter("save_dir").value)
-        self.output_yaml = str(self.get_parameter("output_yaml").value)
-        self.output_npz = str(self.get_parameter("output_npz").value)
-        self.cols = int(self.get_parameter("cols").value)
-        self.rows = int(self.get_parameter("rows").value)
-        self.square_size = float(self.get_parameter("square_size").value)
-        self.marker_size = float(self.get_parameter("marker_size").value)
-        self.preview = bool(self.get_parameter("preview").value)
+            # 이제 self.board가 존재하므로 에러가 나지 않습니다.
+            self.detector = aruco.CharucoDetector(self.board, detectorParams=self.params)
 
-        # [추가] Charuco 보드 및 Detector 설정
-        self.dictionary = aruco.getPredefinedDictionary(aruco.DICT_6X6_250)
-        self.board = aruco.CharucoBoard(
-            (self.cols, self.rows), 
-            self.square_size, 
-            self.marker_size, 
-            self.dictionary
-        )
-        self.detector = aruco.CharucoDetector(self.board)
+            # 터미널 로깅용 상태 변수 추가
+            self.last_found_status = False
 
-        # 디버그 폴더 생성 로직 (기존과 동일)
-        Path(self.save_dir).mkdir(parents=True, exist_ok=True)
-        self.debug_corners_dir = Path(self.save_dir) / "debug_corners"
-        self.debug_corners_dir.mkdir(parents=True, exist_ok=True)
+            # 나머지 초기화 로직 (디렉토리 생성 등)
+            Path(self.save_dir).mkdir(parents=True, exist_ok=True)
+            self.debug_corners_dir = Path(self.save_dir) / "debug_corners"
+            self.debug_corners_dir.mkdir(parents=True, exist_ok=True)
 
-        self.bridge = CvBridge()
-        self.latest_frame = None
-        self.lock = threading.Lock()
-        self.cmd_queue = queue.Queue()
+            self.bridge = CvBridge()
+            self.latest_frame = None
+            self.lock = threading.Lock()
+            self.cmd_queue = queue.Queue()
 
-        self.sub = self.create_subscription(Image, image_topic, self.image_callback, 10)
-        self.timer = self.create_timer(0.05, self.timer_callback)
+            self.sub = self.create_subscription(Image, str(self.get_parameter("image_topic").value), self.image_callback, 10)
+            self.timer = self.create_timer(0.05, self.timer_callback)
 
-        self.input_thread = threading.Thread(target=self.stdin_loop, daemon=True)
-        self.input_thread.start()
+            self.input_thread = threading.Thread(target=self.stdin_loop, daemon=True)
+            self.input_thread.start()
 
-        self.get_logger().info(f"Charuco Calib Node Started: {self.cols}x{self.rows}")
-        self.print_help()
+            self.get_logger().info(f"🚀 Charuco Calib Started: {self.cols}x{self.rows}")
 
     def print_help(self):
         print("\n================ Charuco Calibration CLI ================")
