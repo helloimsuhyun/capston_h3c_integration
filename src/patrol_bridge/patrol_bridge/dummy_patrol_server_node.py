@@ -247,6 +247,21 @@ class DummyPatrolServerNode(Node):
                 "places": places,
             }
 
+        @self.app.get("/places/{place_id}")
+        def get_place(place_id: str):
+            with node._lock:
+                for p in node._places:
+                    if p["place_id"] == place_id:
+                        return {
+                            "ok": True,
+                            "place": {
+                                "place_id": place_id,
+                                "mode": "query"   
+                            }
+                        }
+
+            return {"ok": True, "place": None}
+
         # ----------------------------------------------------------
         # 이미지를 받은 경우 endpoint
         # 실서버처럼 파일명 규칙만 맞춰서 저장만 수행
