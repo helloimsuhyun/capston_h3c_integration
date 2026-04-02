@@ -303,35 +303,64 @@ class DummyPatrolServerNode(Node):
             except Exception:
                 raise HTTPException(status_code=400, detail="meta must be valid json string")
 
-            place_id = str(meta_obj.get("place_id", "unknown"))
-            mode = str(meta_obj.get("mode", "unknown"))
-            label = meta_obj.get("label", None)
+            place_id = str(meta_obj.get("place_id", "unknown")).strip()
             ts = meta_obj.get("timestamp") or datetime.now().isoformat()
 
-            if mode not in ("bank", "th_calib", "query"):
-                raise HTTPException(
-                    status_code=400,
-                    detail="mode must be one of bank/th_calib/query"
-                )
+            if not place_id:
+                raise HTTPException(status_code=400, detail="place_id is required")
+
+            # 더미 서버 정책:
+            # - mode는 항상 query
+            # - label은 사용하지 않음
+            mode = "query"
+
+            # 테스트 편의상 place 없으면 자동 등록
+            with node._lock:
+                found = None
+                for p in node._places:
+                    if str(p.get("place_id")) == place_id:
+                        found = p
+                        break
+
+                if found is None:
+                    new_place = {
+                        "place_id": place_id,
+                        "display_name": place_id,
+                        "x": 0.0,
+                        "y": 0.0,
+                        "yaw": 0.0,
+                        "patrol_enabled": True,
+                    }
+                    node._places.append(new_place)
+                    node.get_logger().warning(
+                        f"[AUTOADD] place_id={place_id} was missing -> auto-created for test"
+                    )
 
             safe_ts = ts.replace(":", "-")
             out_dir = node.save_root / place_id / mode
             out_dir.mkdir(parents=True, exist_ok=True)
 
-            if label is None:
-                prefix = f"{place_id}_{mode}_{safe_ts}"
-            else:
-                prefix = f"{label}_{place_id}_{mode}_{safe_ts}"
-
+            prefix = f"{place_id}_{mode}_{safe_ts}"
             saved = []
 
-            for i, uf in enumerate(images):
-                ext = Path(uf.filename).suffix.lower() or ".jpg"
-                out_path = out_dir / f"{prefix}_{i:03d}{ext}"
+            try:
+                for i, uf in enumerate(images):
+                    ext = Path(uf.filename).suffix.lower() or ".jpg"
+                    out_path = out_dir / f"{prefix}_{i:03d}{ext}"
 
-                data = await uf.read()
-                out_path.write_bytes(data)
-                saved.append(str(out_path))
+                    node.get_logger().info(
+                        f"[SAVE][DBG] writing index={i} filename={uf.filename} -> {out_path}"
+                    )
+
+                    data = await uf.read()
+                    node.get_logger().info(f"[SAVE][DBG] read bytes={len(data)}")
+
+                    out_path.write_bytes(data)
+                    saved.append(str(out_path))
+
+            except Exception as e:
+                node.get_logger().error(f"[SAVE][ERROR] {type(e).__name__}: {e}")
+                raise HTTPException(status_code=500, detail=f"failed to save images: {e}")
 
             node.get_logger().info(
                 f"[SAVE][IMG] place_id={place_id} | mode={mode} | "
@@ -342,12 +371,13 @@ class DummyPatrolServerNode(Node):
                 {
                     "ok": True,
                     "status": "saved",
+                    "place_id": place_id,
+                    "applied_mode": mode,
                     "n_images": len(saved),
                     "saved_dir": str(out_dir),
                     "meta": meta_obj,
                 }
             )
-
     # -------------------------
     # HTTP server
     # -------------------------
