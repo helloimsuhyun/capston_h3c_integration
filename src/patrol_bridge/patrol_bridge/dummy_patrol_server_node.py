@@ -249,6 +249,8 @@ class DummyPatrolServerNode(Node):
 
         @self.app.get("/places/{place_id}")
         def get_place(place_id: str):
+            node.get_logger().error(f"### GET_PLACE ACTIVE: {place_id} ###")
+            node.get_logger().error(f"### AUTOADD ACTIVE: {place_id} ###")
             with node._lock:
                 for p in node._places:
                     if p["place_id"] == place_id:
