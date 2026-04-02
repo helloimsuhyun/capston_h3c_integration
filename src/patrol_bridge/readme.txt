@@ -10,12 +10,13 @@
 # 1. 더미 서버 및 브릿지 통합 런치파일 실행 ------------------------------------------------------
 <공통>
 cd capston_h3c_integration
-source install/setup.bash
 
 터미널 1: 통합 브릿지 노드
+source install/setup.bash
 ros2 launch capston_bringup bringup_all.launch.py server_ip:=127.0.0.1
 
 터미널 2: 더미 서버 노드
+source install/setup.bash
 ros2 run patrol_bridge dummy_patrol_server_node
 * 터미널 1에서 에러 메세지는 무시하면 됨 ( 전체 서버와 연결되지 않아 발생하는 오류인데 문제없음)
 
@@ -34,11 +35,9 @@ ros2 topic pub --once /reload_waypoints std_msgs/msg/Empty "{}"
 
 # 3. 캡처 로직 -----------------------------------------------------------------------------
 
-# 터미널 5 : place_id 전달 - 로봇이 도착한 place_id(위의 waypoint_json으로 받은)을 보냄
+# 터미널 5 : place_id 전달 - 로봇이 도착한 place_id(위의 waypoint_json으로 받은)을 보내고 캡처 트리거 발행
 source install/setup.bash
 ros2 topic pub /patrol/current_place std_msgs/msg/String "{data: 'P03'}" --once
-
-# 캡처 진행
 ros2 topic pub /patrol/capture_trigger std_msgs/msg/Empty "{}" --once
 
 

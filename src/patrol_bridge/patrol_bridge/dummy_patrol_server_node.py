@@ -256,11 +256,32 @@ class DummyPatrolServerNode(Node):
                             "ok": True,
                             "place": {
                                 "place_id": place_id,
-                                "mode": "query"   
+                                "mode": "query"
                             }
                         }
 
-            return {"ok": True, "place": None}
+                # 없으면 테스트용으로 자동 등록
+                new_place = {
+                    "place_id": place_id,
+                    "display_name": place_id,
+                    "x": 0.0,
+                    "y": 0.0,
+                    "yaw": 0.0,
+                    "patrol_enabled": True,
+                }
+                node._places.append(new_place)
+
+            node.get_logger().warning(
+                f"[AUTOADD] place_id={place_id} was missing -> auto-created for test"
+            )
+
+            return {
+                "ok": True,
+                "place": {
+                    "place_id": place_id,
+                    "mode": "query"
+                }
+            }
 
         # ----------------------------------------------------------
         # 이미지를 받은 경우 endpoint
