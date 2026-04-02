@@ -4,7 +4,7 @@
 import json
 import time
 import threading
-from typing import List, Dict, Any, Optional, Tuple, Literal
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 
 import numpy as np
@@ -103,19 +103,14 @@ def capture_and_send(
     buffer: "FrameBuffer",          # ros callback buffer
     server_url: str,                # http url
     place_id: str,
-    mode: Literal["bank", "th_calib", "query"], # "normal", "query"
     n_frames: int = 10,
     sample_dt: float = 0.2,
     capture_timeout_s: float = 5.0, # capture timeout
     post_timeout_s: float = 5.0,    # http timeout
-    gt = None,
 ) -> Dict[str, Any]:
     """
     ros node에서 update호출로 채워지는 buffer에서 [n_frames] 을 sample_dt간격으로 뽑아 http로 보냄
     """
-
-    if mode not in ("bank", "th_calib", "query"):
-        raise ValueError("mode must be 'bank' or 'query' or 'th_calib'")
 
     frames = buffer.capture_n(
         n_frames=n_frames,
@@ -128,8 +123,6 @@ def capture_and_send(
         "place_id": place_id,
         "timestamp": datetime.now().isoformat(),
         "n_frames": len(frames),
-        "mode" : mode,
-        "label" : gt # 평상시 None, 정답이 주어진 경우에는 normal, unnomal
     }
 
     return post_batch(

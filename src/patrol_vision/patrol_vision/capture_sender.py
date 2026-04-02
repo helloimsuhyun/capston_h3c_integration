@@ -2,13 +2,12 @@
 
 import threading
 import cv2
-import requests
 
 import rclpy
 from rclpy.node import Node
 
 from sensor_msgs.msg import Image
-from std_msgs.msg import String, Empty
+from std_msgs.msg import String
 from cv_bridge import CvBridge
 
 from .cap_and_send import FrameBuffer, capture_and_send
@@ -78,7 +77,6 @@ class CaptureSender(Node):
         self.webrtc_sender.start()
 
         self.place_id = "00"
-        self.query_gt = "normal"
 
         self.lock = threading.Lock()
         self.sending = False
@@ -92,20 +90,6 @@ class CaptureSender(Node):
 
         self.create_subscription(
             String,
-            "/patrol/current_place",
-            self.place_cb,
-            10,
-        )
-
-        self.create_subscription(
-            String,
-            "/patrol/query_gt",
-            self.query_gt_cb,
-            10,
-        )
-
-        self.create_subscription(
-            Empty,
             "/patrol/capture_trigger",
             self.trigger_cb,
             10,
@@ -118,47 +102,22 @@ class CaptureSender(Node):
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         self.buffer.update(rgb)
 
-    def place_cb(self, msg: String):
-        self.place_id = msg.data.strip()
-        self.get_logger().info(f"place -> {self.place_id}")
+    def trigger_cb(self, msg: String):
+        place_id = msg.data.strip()
 
-    def query_gt_cb(self, msg: String):
-        label = msg.data.strip().lower()
+        if not place_id:
+            self.get_logger().warning("empty place_id in /patrol/capture_trigger")
+            return
 
-        if label in ["normal", "abnormal"]:
-            self.query_gt = label
-            self.get_logger().info(f"query_gt -> {self.query_gt}")
-        else:
-            self.get_logger().warning(f"invalid query_gt: {msg.data}")
-
-    def get_server_mode(self) -> str:
-        url = f"{self.server_url}/places/{self.place_id}"
-
-        r = requests.get(url, timeout=3)
-        r.raise_for_status()
-        data = r.json()
-
-        place = data.get("place")
-        if place is None:
-            raise RuntimeError(f"no place data returned for place_id={self.place_id}")
-
-        mode = str(place.get("mode", "bank"))
-
-        if mode not in ["bank", "th_calib", "query"]:
-            self.get_logger().warning(
-                f"unexpected mode '{mode}' from server. fallback -> bank"
-            )
-            mode = "bank"
-
-        return mode
-
-    def trigger_cb(self, msg: Empty):
         with self.lock:
             if self.sending:
                 self.get_logger().info("already sending")
                 return
 
             self.sending = True
+            self.place_id = place_id
+
+        self.get_logger().info(f"capture trigger received: place_id={self.place_id}")
 
         threading.Thread(
             target=self.send_worker,
@@ -167,27 +126,18 @@ class CaptureSender(Node):
 
     def send_worker(self):
         try:
-            mode = self.get_server_mode()
-
-            if mode in ["bank", "th_calib"]:
-                label = "normal"
-            else:
-                label = self.query_gt
-
             self.get_logger().info(
-                f"send place={self.place_id} mode={mode} gt={label}"
+                f"send place={self.place_id}"
             )
 
             capture_and_send(
                 buffer=self.buffer,
                 server_url=self.server_url,
                 place_id=self.place_id,
-                mode=mode,
                 n_frames=self.n_frames,
                 sample_dt=self.sample_dt,
                 capture_timeout_s=self.capture_timeout_s,
                 post_timeout_s=self.post_timeout_s,
-                gt=label,
             )
 
         except Exception as e:
