@@ -45,66 +45,96 @@ class WebRTCSender:
         self.pc: Optional[RTCPeerConnection] = None
 
     def start(self):
+        print("[WebRTC] start() called")
+        print("[WebRTC] signaling_base_url =", self.signaling_base_url)
+
         if self.thread is not None and self.thread.is_alive():
+            print("[WebRTC] thread already alive")
             return
+
         self.running = True
         self.thread = threading.Thread(target=self._thread_main, daemon=True)
         self.thread.start()
+        print("[WebRTC] thread started")
 
     def stop(self):
+        print("[WebRTC] stop() called")
         self.running = False
 
     def _thread_main(self):
-        asyncio.run(self._run())
+        print("[WebRTC] _thread_main entered")
+        try:
+            asyncio.run(self._run())
+        except Exception as e:
+            print("[WebRTC] _thread_main fatal error:", repr(e))
 
     async def _run(self):
+        print("[WebRTC] _run loop started")
+
         while self.running:
             try:
-                # viewer offer 대기
-                resp = requests.get(f"{self.signaling_base_url}/sender_poll", timeout=35.0)
+                poll_url = f"{self.signaling_base_url}/sender_poll"
+                print("[WebRTC] polling:", poll_url)
+
+                resp = requests.get(poll_url, timeout=35.0)
+                print("[WebRTC] sender_poll status =", resp.status_code)
+
                 if resp.status_code != 200:
+                    await asyncio.sleep(1.0)
                     continue
 
                 offer_data = resp.json()
+                print("[WebRTC] offer received")
+                print("[WebRTC] offer keys =", list(offer_data.keys()))
 
                 pc = RTCPeerConnection()
                 self.pc = pc
+                print("[WebRTC] RTCPeerConnection created")
 
                 @pc.on("connectionstatechange")
                 async def on_connectionstatechange():
                     print("[WebRTC] sender state:", pc.connectionState)
 
                 pc.addTrack(BufferVideoTrack(self.buffer))
+                print("[WebRTC] track added")
 
                 offer = RTCSessionDescription(
                     sdp=offer_data["sdp"],
                     type=offer_data["type"],
                 )
+
                 await pc.setRemoteDescription(offer)
+                print("[WebRTC] remote description set")
 
                 answer = await pc.createAnswer()
-                await pc.setLocalDescription(answer)
+                print("[WebRTC] answer created")
 
-                requests.post(
-                    f"{self.signaling_base_url}/sender_answer",
+                await pc.setLocalDescription(answer)
+                print("[WebRTC] local description set")
+
+                ans_url = f"{self.signaling_base_url}/sender_answer"
+                r = requests.post(
+                    ans_url,
                     json={
                         "sdp": pc.localDescription.sdp,
                         "type": pc.localDescription.type,
                     },
                     timeout=10.0,
                 )
+                print("[WebRTC] sender_answer post status =", r.status_code)
 
                 while self.running and pc.connectionState not in ("failed", "closed", "disconnected"):
                     await asyncio.sleep(1.0)
 
             except Exception as e:
-                print("[WebRTC] sender error:", e)
+                print("[WebRTC] sender error:", repr(e))
             finally:
                 if self.pc is not None:
                     try:
                         await self.pc.close()
-                    except Exception:
-                        pass
+                        print("[WebRTC] pc closed")
+                    except Exception as e:
+                        print("[WebRTC] pc close error:", repr(e))
                     self.pc = None
 
             await asyncio.sleep(1.0)
