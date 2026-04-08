@@ -2,7 +2,7 @@ from setuptools import setup
 from glob import glob
 import os
 
-package_name = 'person_tracker_ros'
+package_name = 'patrol_yolo'
 
 setup(
     name=package_name,

@@ -8,7 +8,7 @@ import os
 
 
 def generate_launch_description():
-    pkg_path = get_package_share_directory('person_tracker_ros')
+    pkg_path = get_package_share_directory('patrol_yolo')
 
     default_config = os.path.join(
         pkg_path,
@@ -31,7 +31,7 @@ def generate_launch_description():
         ),
 
         Node(
-            package='person_tracker_ros',
+            package='patrol_yolo',
             executable='person_tracker_node',
             name='person_tracker_node',
             output='screen',
