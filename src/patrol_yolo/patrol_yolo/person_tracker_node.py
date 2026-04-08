@@ -1,5 +1,3 @@
-# person_tracker_node.py
-
 import json
 import time
 import threading
@@ -112,7 +110,7 @@ class PersonTrackerNode(Node):
         self.last_infer_time = 0.0
 
         self.get_logger().info(f"Loading YOLO model: {self.model_path}")
-        self.model = YOLO(self.model_path, task = "detect")
+        self.model = YOLO(self.model_path, task="detect")
 
         self.annotated_pub = self.create_publisher(Image, self.annotated_topic, 10)
         self.tracks_pub = self.create_publisher(String, self.tracks_topic, 10)
@@ -132,7 +130,6 @@ class PersonTrackerNode(Node):
                 self.color_callback,
                 10
             )
-
         else:
             self.get_logger().info(
                 f"[MODE] realsense | color_topic={self.realsense_color_topic} | depth_topic={self.realsense_depth_topic}"
@@ -171,8 +168,8 @@ class PersonTrackerNode(Node):
         )
 
         packet = {
-            "stamp_ns": self.msg_to_ns(color_msg),
-            "recv_ns": self.get_clock().now().nanoseconds,
+            "stamp_ns": self.msg_to_ns(color_msg),           # 참고용
+            "recv_ns": self.get_clock().now().nanoseconds,  # stale 체크용
             "color_msg": color_msg,
             "color": color,
             "depth": None,
@@ -192,8 +189,14 @@ class PersonTrackerNode(Node):
             self.get_logger().error(f"Depth image conversion failed: {e}")
             return
 
+        self.get_logger().info(
+            "[SYNC] color+depth packet received",
+            throttle_duration_sec=2.0
+        )
+
         packet = {
-            "stamp_ns": self.msg_to_ns(color_msg),
+            "stamp_ns": self.msg_to_ns(color_msg),           # 참고용
+            "recv_ns": self.get_clock().now().nanoseconds,  # stale 체크용
             "color_msg": color_msg,
             "color": color,
             "depth": depth,
@@ -227,10 +230,17 @@ class PersonTrackerNode(Node):
                 continue
 
             try:
-                age_ms = (time.time_ns() - packet["stamp_ns"]) / 1e6
+                now_ns = self.get_clock().now().nanoseconds
+                age_ms = (now_ns - packet["recv_ns"]) / 1e6
+
+                self.get_logger().info(
+                    f"[WORKER] packet picked age={age_ms:.1f} ms",
+                    throttle_duration_sec=2.0
+                )
+
                 if age_ms > self.stale_frame_ms:
                     self.get_logger().warn(
-                        f"Dropping stale frame: {age_ms:.1f} ms",
+                        f"[DROP] stale frame: {age_ms:.1f} ms",
                         throttle_duration_sec=2.0
                     )
                     continue
@@ -240,6 +250,11 @@ class PersonTrackerNode(Node):
                 annotated, tracks = self.run_tracking(
                     color=packet["color"],
                     depth=packet["depth"]
+                )
+
+                self.get_logger().info(
+                    f"[YOLO] done, tracks={len(tracks)}",
+                    throttle_duration_sec=2.0
                 )
 
                 self.publish_outputs(
@@ -376,6 +391,10 @@ class PersonTrackerNode(Node):
             ann_msg = self.bridge.cv2_to_imgmsg(annotated, encoding="bgr8")
             ann_msg.header = color_msg.header
             self.annotated_pub.publish(ann_msg)
+            self.get_logger().info(
+                "[PUB] annotated published",
+                throttle_duration_sec=2.0
+            )
         except Exception as e:
             self.get_logger().error(f"Annotated publish failed: {e}")
 
