@@ -90,7 +90,7 @@ Thumbs.db
 # data/
 # outputs/
 # checkpoints/
-# *.pt
-# *.pth
-# *.onnx
-# *.engine
+*.pt
+*.pth
+*.onnx
+*.engine
