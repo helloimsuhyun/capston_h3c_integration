@@ -9,7 +9,7 @@ apt show nvidia-jetpack
 파이썬, 넘파이 , 제트팩 버전 확인  ==============================================
 
 python3 --version
-python3 -c "import sys; import numpy;  print(sys.version) ; print(numpy.version)"
+python3 -c "import sys; import numpy; print(sys.version); print(numpy.__version__)"
 uname -m
 >>
 JetPack Runtime 6.2.1
