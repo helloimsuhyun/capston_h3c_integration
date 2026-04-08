@@ -108,6 +108,8 @@ rqt_image_view
 
 
 
+python3 -c "import sys, torch; print(sys.executable); print(torch.__version__); print(torch.cuda.is_available())"
 
-==
-find . -type f -printf "%s %p\n" | sort -nr | head -30 | awk '{printf "%.2f MB\t%s\n", $1/1024/1024, $2}'
+colcon build --packages-select person_tracker_ros
+source install/setup.bash
+ros2 launch person_tracker_ros person_tracker.launch.py
