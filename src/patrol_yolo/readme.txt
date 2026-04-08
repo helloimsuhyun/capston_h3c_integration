@@ -21,11 +21,10 @@ sudo apt-get update
 sudo apt-get install -y python3-pip libopenblas-dev
 
 pip3 install numpy==1.26.4
-python3 -m pip uninstall -y torch torchvision
-pip3 uninstall ultralytics -y
+pip3 uninstall torch torchvision ultralytics -y
 
 wget https://raw.githubusercontent.com/pytorch/pytorch/5c6af2b583709f6176898c017424dc9981023c28/.ci/docker/common/install_cusparselt.sh
-export CUDA_VERSION=12.1
+export CUDA_VERSION=12.6
 bash ./install_cusparselt.sh
 
 wget "https://pypi.jetson-ai-lab.dev/jp6/cu126/+f/6cc/6ecfe8a5994fd/torch-2.6.0-cp310-cp310-linux_aarch64.whl#sha256=6cc6ecfe8a5994fd6d58fb6d6eb73ff2437428bb4953f3ebaa409f83a5f4db99"
