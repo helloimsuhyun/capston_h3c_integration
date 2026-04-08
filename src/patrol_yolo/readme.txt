@@ -29,13 +29,9 @@ bash ./install_cusparselt.sh
 
 ========= 다운받은 wget이 cuda version 적용 및 문법 오류가 있을 수 있는데 gpt 시키기
 
-wget "https://pypi.jetson-ai-lab.dev/jp6/cu126/+f/6cc/6ecfe8a5994fd/torch-2.6.0-cp310-cp310-linux_aarch64.whl#sha256=6cc6ecfe8a5994fd6d58fb6d6eb73ff2437428bb4953f3ebaa409f83a5f4db99"
-wget "https://pypi.jetson-ai-lab.dev/jp6/cu126/+f/aa2/2da8dcf4c4c8d/torchvision-0.21.0-cp310-cp310-linux_aarch64.whl#sha256=aa22da8dcf4c4c8dc897e7922b1ef25cb0fe350e1a358168be87a854ad114531"
+wget https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/torch-2.4.0a0+3bcc3cddb5.nv24.07.16234504-cp310-cp310-linux_aarch64.whl
+pip3 install ./torch-2.4.0a0+3bcc3cddb5.nv24.07.16234504-cp310-cp310-linux_aarch64.whl
 
-== 학교 wifi dns이슈로 안될수 있는데 핫스팟으로 하기
-
-pip3 install torch-2.6.0-cp310-cp310-linux_aarch64.whl
-pip3 install torchvision-0.21.0-cp310-cp310-linux_aarch64.whl
 
 python3 -m pip install -U ultralytics
 
