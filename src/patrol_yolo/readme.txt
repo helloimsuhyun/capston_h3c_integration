@@ -32,8 +32,7 @@ bash ./install_cusparselt.sh
 
 ========= 다운받은 wget이 cuda version 적용 및 문법 오류가 있을 수 있는데 gpt 시키기
 1. torch
-wget https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/torch-2.3.0-cp310-cp310-linux_aarch64.whl
-pip install ./torch-2.3.0-cp310-cp310-linux_aarch64.whl
+pip install https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/torch-2.3.0-cp310-cp310-linux_aarch64.whl
 
 python3 - <<EOF
 import torch
@@ -41,8 +40,7 @@ print(torch.__version__)
 print(torch.cuda.is_available())
 EOF
 
-wget https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/torchvision-0.18.0a0+6043bc2-cp310-cp310-linux_aarch64.whl
-pip install ./torchvision-0.18.0a0+6043bc2-cp310-cp310-linux_aarch64.whl
+pip install https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/torchvision-0.18.0a0+6043bc2-cp310-cp310-linux_aarch64.whl
 
 확인 ========================================== 
 python3 - <<EOF
