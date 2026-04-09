@@ -1,3 +1,7 @@
+/**:
+  ros__parameters:
+    start_enabled: true
+
 person_tracker_node:
   ros__parameters:
     mode: "webcam"
@@ -15,7 +19,6 @@ person_tracker_node:
     use_gpu: true
 
     enable_topic: "/person_tracking/enable"
-    start_enabled: true
 
     annotated_topic: "/person_tracking/annotated"
     tracks_topic: "/person_tracking/tracks_json"
