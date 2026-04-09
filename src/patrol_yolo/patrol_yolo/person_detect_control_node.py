@@ -11,6 +11,10 @@ from rclpy.node import Node
 from std_msgs.msg import Bool
 from geometry_msgs.msg import Pose2D
 
+import yaml
+import os
+from ament_index_python.packages import get_package_share_directory
+
 
 class YoloRegion(BaseModel):
     region_id: Optional[int] = None
@@ -51,6 +55,9 @@ class PersonDetectControlNode(Node):
         self.notify_port = int(self.get_parameter("notify_port").value)
 
         self.log_region_match = bool(self.get_parameter("log_region_match").value)
+
+        self.declare_parameter('config', '')
+        self.declare_parameter('start_enabled', None)
 
         self.lock = threading.Lock()
 
@@ -95,6 +102,31 @@ class PersonDetectControlNode(Node):
             f"notify_http={self.notify_host}:{self.notify_port} | "
             f"startup_publish=disabled_until_first_config"
         )
+
+        config_path = self.get_parameter('config').value
+        start_enabled = self.get_parameter('start_enabled').value
+
+        if start_enabled is None:
+            if not config_path:
+                pkg_path = get_package_share_directory('patrol_yolo')
+                config_path = os.path.join(pkg_path, 'config', 'person_tracker.yaml')
+
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    cfg = yaml.safe_load(f) or {}
+
+                start_enabled = cfg.get(
+                    'person_tracker_node', {}
+                ).get(
+                    'ros__parameters', {}
+                ).get(
+                    'start_enabled', False
+                )
+            except Exception as e:
+                self.get_logger().warn(f'Failed to load start_enabled from config: {e}')
+                start_enabled = False
+
+        self.enabled = bool(start_enabled)
 
     # =========================
     # HTTP
@@ -214,7 +246,10 @@ class PersonDetectControlNode(Node):
 
         # 서버 config 오기 전에는 publish 안 함
         if not config_ok:
-            return None, None, "config_not_received_no_publish"
+            if self.enabled:   # ← yaml에서 읽은 start_enabled
+                return True, None, "startup_mode_global"
+            else:
+                return False, None, "startup_mode_off"
 
         if yolo_mode == 0:
             return False, None, "mode_off"

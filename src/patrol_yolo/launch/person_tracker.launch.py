@@ -70,6 +70,7 @@ def generate_launch_description():
             output='screen',
             parameters=[
                 {
+                    'config': config,
                     'robot_pose_topic': '/robot_pose',
                     'enable_topic': '/person_tracking/enable',
                     'notify_host': notify_host,
