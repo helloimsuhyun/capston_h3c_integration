@@ -128,6 +128,10 @@ class PersonDetectControlNode(Node):
 
         self.enabled = bool(start_enabled)
 
+        self.evaluate_enable() 
+        
+        self.get_logger().info(f"Initial state published: {self.enabled}")
+
     # =========================
     # HTTP
     # =========================

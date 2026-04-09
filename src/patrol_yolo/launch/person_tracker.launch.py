@@ -69,14 +69,15 @@ def generate_launch_description():
             name='person_detect_control_node',
             output='screen',
             parameters=[
-                {
-                    'config': config,
+                
+                    config,
+                    {
                     'robot_pose_topic': '/robot_pose',
                     'enable_topic': '/person_tracking/enable',
                     'notify_host': notify_host,
                     'notify_port': notify_port,
                     'log_region_match': True,
-                }
+                    }
             ],
         ),
 
