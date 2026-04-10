@@ -10,7 +10,8 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import String
 from cv_bridge import CvBridge
 
-from .cap_and_send import FrameBuffer, capture_and_send
+from datetime import datetime
+from .cap_and_send import FrameBuffer, post_batch
 from .webrtc_sender import WebRTCSender
 
 """
@@ -94,6 +95,11 @@ class CaptureSender(Node):
             self.trigger_cb,
             10,
         )
+        self.capture_done_pub = self.create_publisher(
+            String,
+            "/patrol/capture_done",
+            10,
+        )
 
         self.get_logger().info("capture sender ready")
 
@@ -124,29 +130,58 @@ class CaptureSender(Node):
             daemon=True,
         ).start()
 
-    def send_worker(self):
-        try:
-            self.get_logger().info(
-                f"send place={self.place_id}"
-            )
+    def publish_capture_result(self, status: str, place_id: str):
+        msg = String()
+        msg.data = f"{status}:{place_id}"
+        self.capture_done_pub.publish(msg)
+        self.get_logger().info(f"published /patrol/capture_done = {msg.data}")
 
-            capture_and_send(
-                buffer=self.buffer,
-                server_url=self.server_url,
-                place_id=self.place_id,
+    def send_worker(self):
+        current_place_id = self.place_id
+
+        try:
+            self.get_logger().info(f"capture start place={current_place_id}")
+
+            frames = self.buffer.capture_n(
                 n_frames=self.n_frames,
                 sample_dt=self.sample_dt,
-                capture_timeout_s=self.capture_timeout_s,
-                post_timeout_s=self.post_timeout_s,
+                timeout_s=self.capture_timeout_s,
             )
 
         except Exception as e:
-            self.get_logger().error(f"send_worker failed: {e}")
+            self.get_logger().error(f"capture failed: {e}")
+            self.publish_capture_result("fail", current_place_id)
+
+            with self.lock:
+                self.sending = False
+            return
+
+        self.publish_capture_result("done", current_place_id)
+
+        try:
+            self.get_logger().info(f"upload start place={current_place_id}")
+
+            meta = {
+                "place_id": current_place_id,
+                "timestamp": datetime.now().isoformat(),
+                "n_frames": len(frames),
+            }
+
+            post_batch(
+                server_url=self.server_url,
+                images_rgb=frames,
+                meta=meta,
+                timeout_s=self.post_timeout_s,
+            )
+
+            self.get_logger().info(f"upload done place={current_place_id}")
+
+        except Exception as e:
+            self.get_logger().error(f"upload failed after capture done: {e}")
 
         finally:
             with self.lock:
                 self.sending = False
-
 
 def main():
     rclpy.init()
