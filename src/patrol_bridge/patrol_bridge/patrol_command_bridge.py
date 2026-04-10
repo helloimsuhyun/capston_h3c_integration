@@ -68,6 +68,7 @@ class PatrolCommandBridge(Node):
 
             places = response.json().get("places", [])
             payload = {"places": places}
+            
             payload_json = json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
             msg = String()

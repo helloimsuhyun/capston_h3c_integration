@@ -38,6 +38,9 @@ class PersonEventSenderNode(Node):
         # dwelling
         self.declare_parameter("dwell_time_sec", 10.0)
 
+        # new stable person present event
+        self.declare_parameter("new_person_stable_sec", 0.5)
+
         # bbox filter
         self.declare_parameter("min_bbox_w", 40)
         self.declare_parameter("min_bbox_h", 80)
@@ -67,6 +70,7 @@ class PersonEventSenderNode(Node):
         self.global_cooldown_sec = float(self.get_parameter("global_cooldown_sec").value)
 
         self.dwell_time_sec = float(self.get_parameter("dwell_time_sec").value)
+        self.new_person_stable_sec = float(self.get_parameter("new_person_stable_sec").value)
 
         self.min_bbox_w = int(self.get_parameter("min_bbox_w").value)
         self.min_bbox_h = int(self.get_parameter("min_bbox_h").value)
@@ -92,12 +96,13 @@ class PersonEventSenderNode(Node):
         self.last_valid_seen_time = 0.0
         self.last_sent_time = 0.0
 
-        # per-person tracking for dwelling
+        # per-person tracking
         # {
         #   "7": {
         #       "first_seen": ...,
         #       "last_seen": ...,
-        #       "dwell_sent": False
+        #       "dwell_sent": False,
+        #       "present_sent": False,
         #   }
         # }
         self.person_states: Dict[str, Dict[str, Any]] = {}
@@ -169,16 +174,47 @@ class PersonEventSenderNode(Node):
         seen_ids = self.update_person_states(valid_tracks, now)
         self.cleanup_missing_tracks(seen_ids=seen_ids, now=now)
 
-        # 1) first presence event
-        if (
-            self.presence_hits >= self.min_consecutive_hits
-            and not self.person_present
-            and (now - self.last_sent_time) >= self.global_cooldown_sec
-        ):
-            self.send_event_if_possible(
+        # 1) person_present event
+        # - first_person: 아무도 없다가 첫 사람이 stable하게 들어옴
+        # - new_person_added: 이미 사람 있는 상태에서 새 stable ID 추가
+        for tr in valid_tracks:
+            person_id = str(tr.get("person_id", -1))
+            if person_id == "-1":
+                continue
+
+            st = self.person_states.get(person_id)
+            if st is None:
+                continue
+
+            stable_elapsed = now - st["first_seen"]
+
+            # 첫 사람은 너무 빨리 보내지 않도록 기존 global 안정 조건도 유지
+            if not self.person_present and self.presence_hits < self.min_consecutive_hits:
+                continue
+
+            # 새 ID도 약간 안정화 후 전송
+            if stable_elapsed < self.new_person_stable_sec:
+                continue
+
+            if st["present_sent"]:
+                continue
+
+            # 첫 사람 전송에만 global cooldown 적용
+            if (not self.person_present) and ((now - self.last_sent_time) < self.global_cooldown_sec):
+                continue
+
+            trigger = "first_person" if not self.person_present else "new_person_added"
+
+            sent = self.send_event_if_possible(
                 event_type="person_present",
-                num_persons=len(valid_tracks)
+                num_persons=len(valid_tracks),
+                person_id=person_id,
+                trigger=trigger
             )
+            if sent:
+                st["present_sent"] = True
+                self.person_present = True
+                self.last_sent_time = now
 
         # 2) dwelling event per stable person_id
         for tr in valid_tracks:
@@ -195,7 +231,7 @@ class PersonEventSenderNode(Node):
                 sent = self.send_event_if_possible(
                     event_type="person_dwelling",
                     num_persons=len(valid_tracks),
-                    dwell_person_id=person_id,
+                    person_id=person_id,
                     dwell_time_sec=round(dwell_elapsed, 1)
                 )
                 if sent:
@@ -248,6 +284,7 @@ class PersonEventSenderNode(Node):
                     "first_seen": now,
                     "last_seen": now,
                     "dwell_sent": False,
+                    "present_sent": False,
                 }
             else:
                 self.person_states[person_id]["last_seen"] = now
@@ -277,8 +314,9 @@ class PersonEventSenderNode(Node):
         self,
         event_type: str,
         num_persons: int,
-        dwell_person_id: Optional[str] = None,
+        person_id: Optional[str] = None,
         dwell_time_sec: Optional[float] = None,
+        trigger: Optional[str] = None,
     ) -> bool:
         with self.lock:
             ann_msg = self.latest_annotated_msg
@@ -314,10 +352,12 @@ class PersonEventSenderNode(Node):
             "num_persons": int(num_persons),
         }
 
-        if dwell_person_id is not None:
-            event["person_id"] = dwell_person_id
+        if person_id is not None:
+            event["person_id"] = person_id
         if dwell_time_sec is not None:
             event["dwell_time_sec"] = float(dwell_time_sec)
+        if trigger is not None:
+            event["trigger"] = trigger
 
         jpg_bytes = enc.tobytes()
 
