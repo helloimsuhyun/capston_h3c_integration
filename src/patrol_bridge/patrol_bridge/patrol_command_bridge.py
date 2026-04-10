@@ -70,10 +70,6 @@ class PatrolCommandBridge(Node):
             payload = {"places": places}
             payload_json = json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
-            if payload_json == self.last_waypoints_json:
-                self.get_logger().info("Waypoint unchanged, skip publish")
-                return
-
             msg = String()
             msg.data = payload_json
             self.waypoints_pub.publish(msg)
