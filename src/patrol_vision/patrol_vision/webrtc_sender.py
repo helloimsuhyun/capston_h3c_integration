@@ -68,24 +68,45 @@ class WebRTCSender:
         except Exception as e:
             print("[WebRTC] _thread_main fatal error:", repr(e))
 
+    async def _http_get(self, url: str, timeout: float):
+        return await asyncio.to_thread(requests.get, url, timeout=timeout)
+
+    async def _http_post(self, url: str, json_data: dict, timeout: float):
+        return await asyncio.to_thread(
+            requests.post,
+            url,
+            json=json_data,
+            timeout=timeout,
+        )
+
     async def _run(self):
         print("[WebRTC] _run loop started")
 
         while self.running:
+            pc = None
             try:
                 poll_url = f"{self.signaling_base_url}/sender_poll"
                 print("[WebRTC] polling:", poll_url)
 
-                resp = requests.get(poll_url, timeout=35.0)
+                resp = await self._http_get(poll_url, timeout=35.0)
                 print("[WebRTC] sender_poll status =", resp.status_code)
 
                 if resp.status_code != 200:
+                    try:
+                        print("[WebRTC] sender_poll body =", resp.text[:300])
+                    except Exception:
+                        pass
                     await asyncio.sleep(1.0)
                     continue
 
                 offer_data = resp.json()
                 print("[WebRTC] offer received")
                 print("[WebRTC] offer keys =", list(offer_data.keys()))
+
+                if "sdp" not in offer_data or "type" not in offer_data:
+                    print("[WebRTC] invalid offer_data:", offer_data)
+                    await asyncio.sleep(1.0)
+                    continue
 
                 pc = RTCPeerConnection()
                 self.pc = pc
@@ -95,6 +116,14 @@ class WebRTCSender:
                 async def on_connectionstatechange():
                     print("[WebRTC] sender state:", pc.connectionState)
 
+                @pc.on("iceconnectionstatechange")
+                async def on_iceconnectionstatechange():
+                    print("[WebRTC] ice state:", pc.iceConnectionState)
+
+                @pc.on("icegatheringstatechange")
+                async def on_icegatheringstatechange():
+                    print("[WebRTC] ice gathering state:", pc.iceGatheringState)
+
                 pc.addTrack(BufferVideoTrack(self.buffer))
                 print("[WebRTC] track added")
 
@@ -103,38 +132,65 @@ class WebRTCSender:
                     type=offer_data["type"],
                 )
 
+                print("[WebRTC] about to setRemoteDescription")
                 await pc.setRemoteDescription(offer)
                 print("[WebRTC] remote description set")
 
+                print("[WebRTC] about to createAnswer")
                 answer = await pc.createAnswer()
                 print("[WebRTC] answer created")
 
+                print("[WebRTC] about to setLocalDescription")
                 await pc.setLocalDescription(answer)
                 print("[WebRTC] local description set")
 
-                ans_url = f"{self.signaling_base_url}/sender_answer"
-                r = requests.post(
-                    ans_url,
-                    json={
-                        "sdp": pc.localDescription.sdp,
-                        "type": pc.localDescription.type,
-                    },
-                    timeout=10.0,
-                )
-                print("[WebRTC] sender_answer post status =", r.status_code)
+                if pc.localDescription is None:
+                    print("[WebRTC] ERROR: localDescription is None")
+                    await asyncio.sleep(1.0)
+                    continue
 
-                while self.running and pc.connectionState not in ("failed", "closed", "disconnected"):
+                print("[WebRTC] localDescription.type =", pc.localDescription.type)
+                print("[WebRTC] localDescription.sdp_len =", len(pc.localDescription.sdp))
+
+                ans_url = f"{self.signaling_base_url}/sender_answer"
+                payload = {
+                    "sdp": pc.localDescription.sdp,
+                    "type": pc.localDescription.type,
+                }
+
+                print("[WebRTC] posting answer to:", ans_url)
+                r = await self._http_post(ans_url, json_data=payload, timeout=10.0)
+                print("[WebRTC] sender_answer post status =", r.status_code)
+                try:
+                    print("[WebRTC] sender_answer post body =", r.text[:300])
+                except Exception:
+                    pass
+
+                if r.status_code != 200:
+                    print("[WebRTC] sender_answer post failed")
+                    await asyncio.sleep(1.0)
+                    continue
+
+                print("[WebRTC] answer posted successfully")
+
+                while self.running:
+                    state = pc.connectionState
+                    if state in ("failed", "closed", "disconnected"):
+                        print("[WebRTC] leaving connection loop, state =", state)
+                        break
                     await asyncio.sleep(1.0)
 
             except Exception as e:
                 print("[WebRTC] sender error:", repr(e))
+
             finally:
-                if self.pc is not None:
+                if pc is not None:
                     try:
-                        await self.pc.close()
+                        await pc.close()
                         print("[WebRTC] pc closed")
                     except Exception as e:
                         print("[WebRTC] pc close error:", repr(e))
-                    self.pc = None
+
+                self.pc = None
 
             await asyncio.sleep(1.0)
