@@ -1,0 +1,182 @@
+Jetson + RealSense + ROS2 (Humble) 설치 가이드
+
+[대상 환경]
+
+* Jetson Orin NX (또는 Xavier/Orin 계열)
+* Ubuntu 22.04 (JetPack)
+* ROS2 Humble
+
+==================================================
+
+1. 전체 설치 흐름
+   ==================================================
+
+2. librealsense 설치 (카메라 드라이버) ← 핵심
+
+3. realsense-ros 설치 (ROS wrapper)
+
+4. 실행 및 확인
+
+==================================================
+2. librealsense 설치 (Jetson 필수 단계)
+=================================
+
+[의존성 설치]
+
+sudo apt update
+sudo apt install git cmake build-essential libssl-dev libusb-1.0-0-dev pkg-config -y
+
+[소스 다운로드]
+
+git clone https://github.com/IntelRealSense/librealsense.git
+cd librealsense
+
+[Jetson용 빌드 설정]
+
+mkdir build && cd build
+
+cmake .. 
+-DBUILD_WITH_CUDA=true 
+-DFORCE_RSUSB_BACKEND=true 
+-DBUILD_EXAMPLES=true
+
+[옵션 설명]
+
+* FORCE_RSUSB_BACKEND
+  → Jetson USB 문제 해결 (필수)
+* BUILD_WITH_CUDA
+  → GPU 사용
+
+[빌드 및 설치]
+
+make -j$(nproc)
+sudo make install
+
+[설치 확인]
+
+realsense-viewer
+
+→ 실행되면 성공
+
+==================================================
+3. ROS2 wrapper 설치 (realsense-ros)
+==================================
+
+[워크스페이스 생성]
+
+mkdir -p ~/ros2_ws/src
+cd ~/ros2_ws/src
+
+[코드 다운로드]
+
+git clone https://github.com/realsenseai/realsense-ros.git -b ros2-master
+
+[의존성 설치]
+
+cd ~/ros2_ws
+
+sudo apt install python3-rosdep -y
+sudo rosdep init
+rosdep update
+
+rosdep install -i --from-path src --rosdistro humble --skip-keys=librealsense2 -y
+
+[중요]
+
+--skip-keys=librealsense2
+
+→ 이미 설치된 librealsense와 충돌 방지
+
+[빌드]
+
+colcon build
+
+[환경 설정]
+
+source /opt/ros/humble/setup.bash
+source ~/ros2_ws/install/setup.bash
+
+==================================================
+4. 실행
+=====
+
+ros2 launch realsense2_camera rs_launch.py
+
+[확인]
+
+ros2 topic list
+
+정상 출력 예:
+/camera/camera/color/image_raw
+/camera/camera/depth/image_rect_raw
+
+==================================================
+5. Jetson 최적화 (중요)
+==================
+
+[추천 실행]
+
+ros2 launch realsense2_camera rs_launch.py 
+rgb_camera.color_profile:=640x480x30 
+depth_module.depth_profile:=640x480x30 
+enable_depth:=false
+
+[이유]
+
+* Jetson에서 고해상도 → lag 발생
+* RGB 기반이면 depth 불필요
+* 리소스 절약 필요
+
+==================================================
+6. 문제 해결 체크리스트
+==============
+
+[카메라 인식]
+
+lsusb
+
+[SDK 확인]
+
+realsense-viewer
+
+[ROS 실행]
+
+ros2 launch realsense2_camera rs_launch.py
+
+[장치 확인]
+
+ls /dev/video*
+
+==================================================
+7. 자주 발생하는 문제
+=============
+
+[문제] lag 발생
+→ 해상도 줄이기 (640x480)
+→ FPS 줄이기 (30 → 15)
+
+[문제] 카메라 권한
+
+sudo chmod 777 /dev/video*
+
+[문제] ROS topic 안 보임
+
+source /opt/ros/humble/setup.bash
+source ~/ros2_ws/install/setup.bash
+
+==================================================
+8. 핵심 요약
+========
+
+* Jetson에서는 librealsense를 반드시 먼저 설치
+* ROS 설치 시 librealsense 중복 설치 금지
+* 성능 문제는 대부분 해상도/FPS 문제
+
+==================================================
+최종 결론
+=====
+
+Jetson에서 RealSense는
+
+설치보다
+리소스 관리 (해상도 / FPS / stream 설정)가 더 중요하다
