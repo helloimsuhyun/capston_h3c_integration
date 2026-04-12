@@ -187,7 +187,7 @@ class WebRTCSender:
     # Public API
     # =========================================================
     def start(self):
-        print("[WebRTC] start() called")
+        print("🔥🔥 [WebRTC] start() called", flush=True)
         print("[WebRTC] signaling_base_url =", self.signaling_base_url)
         print("[WebRTC] image_topic =", self.image_topic)
         print("[WebRTC] size =", self.width, "x", self.height, "fps =", self.fps)
@@ -387,7 +387,7 @@ class WebRTCSender:
     # Signaling
     # =========================================================
     def _signaling_worker(self):
-        print("[WebRTC] signaling worker started")
+        print("🔥🔥 [WebRTC] signaling worker started", flush=True)
 
         while self.running:
             try:
@@ -412,8 +412,8 @@ class WebRTCSender:
                     time.sleep(self.poll_interval_sec)
                     continue
 
-                print(f"[WebRTC] offer received: type={sdp_type}, sdp_len={len(sdp)}")
-
+                print(f" 🔥🔥 [WebRTC] offer received: type={sdp_type}, sdp_len={len(sdp)}", flush=True)
+                
                 # 새 세션마다 pipeline 재생성
                 self._build_pipeline()
 
