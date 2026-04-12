@@ -444,11 +444,19 @@ class WebRTCSender:
             pay.set_property("pt", 96)
             pay.set_property("config-interval", 1)
 
+            capsfilter_rtp = self._make_element("capsfilter", "capsfilter_rtp")
+            capsfilter_rtp.set_property(
+                "caps",
+                Gst.Caps.from_string(
+                    "application/x-rtp,media=video,encoding-name=H264,payload=96"
+                )
+            )
+
             self.webrtc = self._make_element("webrtcbin", "webrtc")
             self.webrtc.set_property("bundle-policy", "max-bundle")
             self.webrtc.set_property("stun-server", self.stun_server)
 
-            elems = [self.appsrc, queue, videoconvert, capsfilter_i420]
+            elems += [h264parse, capsfilter_h264, pay, capsfilter_rtp, self.webrtc]
             if self.use_hw_encoder:
                 elems += [nvvidconv, capsfilter_nv12, encoder]
             else:
@@ -506,6 +514,8 @@ class WebRTCSender:
                 raise RuntimeError("failed to link h264parse -> capsfilter_h264")
             if not capsfilter_h264.link(pay):
                 raise RuntimeError("failed to link capsfilter_h264 -> pay")
+            if not pay.link(capsfilter_rtp):
+                raise RuntimeError("failed to link pay -> capsfilter_rtp")
 
             bus = self.pipeline.get_bus()
             bus.add_signal_watch()
@@ -517,9 +527,9 @@ class WebRTCSender:
             self.webrtc.connect("notify::connection-state", self._on_connection_state_changed)
             self.webrtc.connect("notify::signaling-state", self._on_signaling_state_changed)
 
-            pay_src_pad = pay.get_static_pad("src")
+            pay_src_pad = capsfilter_rtp.get_static_pad("src")
             if pay_src_pad is None:
-                raise RuntimeError("failed to get pay src pad")
+                raise RuntimeError("failed to get capsfilter_rtp src pad")
 
             self.webrtc_sink_pad = self._request_webrtc_sink_pad()
             if self.webrtc_sink_pad is None:
