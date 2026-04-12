@@ -518,7 +518,7 @@ class WebRTCSender:
 
                 print(f"🔥🔥 [WebRTC] offer received: type={sdp_type}, sdp_len={len(sdp)}", flush=True)
 
-                self._build_pipeline()
+                GLib.idle_add(self._build_pipeline)
                 self._set_remote_description(sdp, sdp_type)
                 self._create_answer()
 
