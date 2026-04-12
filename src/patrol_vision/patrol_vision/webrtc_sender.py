@@ -16,6 +16,12 @@ sudo apt-get install -y \
   gstreamer1.0-libav \
   python3-requests
 
+sudo apt-get update
+sudo apt-get install -y \
+  libnice10 \
+  gstreamer1.0-nice \
+  gstreamer1.0-plugins-bad
+
 확인
 gst-inspect-1.0 webrtcbin
 gst-inspect-1.0 nvv4l2h264enc
