@@ -119,7 +119,7 @@ class CameraPublisher(Node):
 
 		self.bridge = CvBridge()
 
-		self.cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
+		self.cap = cv2.VideoCapture("usb-046d_MX_Brio_2535ZB33GY68-video-index0", cv2.CAP_V4L2)
 		self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
 		self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
 		self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
