@@ -417,8 +417,17 @@ class WebRTCSender:
             elems += [h264parse, pay, self.webrtc]
 
             for elem in elems:
-                if not self.pipeline.add(elem):
-                    raise RuntimeError(f"failed to add element to pipeline: {elem.get_name()}")
+                try:
+                    self.pipeline.add(elem)
+                except Exception as e:
+                    raise RuntimeError(f"pipeline.add exception for {elem.get_name()}: {repr(e)}")
+
+                parent = elem.get_parent()
+                if parent is None or parent != self.pipeline:
+                    raise RuntimeError(
+                        f"element was not added to pipeline: {elem.get_name()}, "
+                        f"parent={parent}"
+                    )
 
             self.appsrc.set_property(
                 "caps",
