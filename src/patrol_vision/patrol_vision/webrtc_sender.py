@@ -353,8 +353,14 @@ class WebRTCSender:
                 raise RuntimeError("failed to get pay src pad")
 
             webrtc_sink_pad = self.webrtc.get_request_pad("sink_%u")
+
+            if webrtc_sink_pad is None:
+                print("[WebRTC] sink_%u failed → trying sink_0")
+                webrtc_sink_pad = self.webrtc.get_request_pad("sink_0")
+
             if webrtc_sink_pad is None:
                 raise RuntimeError("failed to get webrtcbin request sink pad")
+
 
             link_ret = pay_src_pad.link(webrtc_sink_pad)
             if link_ret != Gst.PadLinkReturn.OK:
