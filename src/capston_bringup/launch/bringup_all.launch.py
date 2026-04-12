@@ -10,6 +10,7 @@ def generate_launch_description():
     patrol_bridge_dir = get_package_share_directory('patrol_bridge')
     security_audio_system_dir = get_package_share_directory('security_audio_system')
     patrol_yolo_system_dir = get_package_share_directory('patrol_yolo')
+    realsense_dir = get_package_share_directory('realsense2_camera')
 
     server_ip_arg = DeclareLaunchArgument(
         'server_ip',
@@ -19,13 +20,13 @@ def generate_launch_description():
 
     image_topic_arg = DeclareLaunchArgument(
         'image_topic',
-        default_value='/camera/color/image_raw',
+        default_value='/camera/color/image_raw', # 리얼센스로 변경되면 /camera/camera/color/image_raw
         description='Image topic used by patrol vision nodes.'
     )
 
     yolo_mode_arg = DeclareLaunchArgument(
         'yolo_mode',
-        default_value='webcam'
+        default_value='webcam' # 리얼센스로 변경되면 'realsense'
     )
     
     # Deriving URLs from the single server_ip
@@ -35,6 +36,25 @@ def generate_launch_description():
 
     server_url = ['http://', server_ip, ':8000']
     signaling_url = ['http://', server_ip, ':8001']
+
+    """ # 리얼센스 사용시
+    realsense_launch = IncludeLaunchDescription(
+    PythonLaunchDescriptionSource(
+        os.path.join(realsense_dir, 'launch', 'rs_launch.py')
+    ),
+        launch_arguments={
+            'rgb_camera.color_profile': '640x480x30',
+            'depth_module.depth_profile': '640x480x30',
+            'enable_depth': 'true',
+            'align_depth.enable': 'true'
+
+            'rgb_camera.enable_auto_white_balance': 'false',
+            'rgb_camera.white_balance': '4500',   # 값은 환경에 맞게 조정
+            'rgb_camera.enable_auto_exposure': 'true',
+        }.items()
+    )
+    
+    """
 
     vision_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(patrol_vision_dir, 'launch', 'system.launch.py')),
@@ -73,8 +93,10 @@ def generate_launch_description():
         server_ip_arg,
         image_topic_arg,
         yolo_mode_arg,
+        #realsense_launch,
         vision_launch,
+        yolo_launch,
         bridge_launch,
         audio_launch,
-        yolo_launch
+
     ])

@@ -50,8 +50,9 @@ def generate_launch_description():
 					],
 				),
 
+				# 리얼센스로 변경시에 해당 노드 주석처리
 				Node(
-						# 웹캠 카메라 publish node
+					# 웹캠 카메라 publish node
 					package="patrol_vision",
 					executable="camera_publisher",
 					name="camera_publisher",
