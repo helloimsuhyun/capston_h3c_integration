@@ -21,11 +21,7 @@ gst-inspect-1.0 webrtcbin
 gst-inspect-1.0 nvv4l2h264enc
 python3 -c "import gi; from gi.repository import Gst; Gst.init(None); print('gst ok')"
 
-cd ~/capston_h3c_integration
-rm -rf build install log
-colcon build --symlink-install
-source install/setup.bash
-ros2 launch capston_bringup bringup_all.launch.py
+
 """
 
 # webrtc_sender.py
@@ -34,7 +30,7 @@ import os
 import sys
 import threading
 import time
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any, Callable
 
 import cv2
 import numpy as np
@@ -194,12 +190,20 @@ class WebRTCSender:
         self.running = True
 
         self.loop = GLib.MainLoop()
-        self._glib_thread = threading.Thread(target=self._run_glib_loop, daemon=True)
+        self._glib_thread = threading.Thread(
+            target=self._run_glib_loop,
+            daemon=True,
+            name="WebRTC-GLib",
+        )
         self._glib_thread.start()
 
         self._start_ros_subscriber()
 
-        self._signaling_thread = threading.Thread(target=self._signaling_worker, daemon=True)
+        self._signaling_thread = threading.Thread(
+            target=self._signaling_worker,
+            daemon=True,
+            name="WebRTC-Signaling",
+        )
         self._signaling_thread.start()
 
         print("[WebRTC] started")
@@ -268,6 +272,32 @@ class WebRTCSender:
         except Exception as e:
             print("[WebRTC] GLib loop error:", repr(e))
 
+    def _run_on_glib(self, fn: Callable, *args, timeout: float = 10.0, **kwargs) -> Any:
+        if self.loop is None:
+            raise RuntimeError("GLib loop is None")
+
+        done = threading.Event()
+        box = {"result": None, "error": None}
+
+        def _wrapper():
+            try:
+                box["result"] = fn(*args, **kwargs)
+            except Exception as e:
+                box["error"] = e
+            finally:
+                done.set()
+            return False
+
+        GLib.idle_add(_wrapper)
+
+        if not done.wait(timeout=timeout):
+            raise TimeoutError(f"GLib task timeout: {getattr(fn, '__name__', str(fn))}")
+
+        if box["error"] is not None:
+            raise box["error"]
+
+        return box["result"]
+
     # =========================================================
     # GStreamer helpers
     # =========================================================
@@ -318,6 +348,8 @@ class WebRTCSender:
     # GStreamer pipeline
     # =========================================================
     def _build_pipeline(self):
+        print("### BUILD PIPELINE THREAD =", threading.current_thread().name, flush=True)
+
         with self._session_lock:
             self._answer_ready_event.clear()
             self._local_answer = None
@@ -399,7 +431,7 @@ class WebRTCSender:
             self.appsrc.set_property("format", Gst.Format.TIME)
             self.appsrc.set_property("do-timestamp", True)
 
-            queue.set_property("leaky", 2)  # downstream
+            queue.set_property("leaky", 2)
             queue.set_property("max-size-buffers", 1)
 
             if not self.appsrc.link(queue):
@@ -518,9 +550,9 @@ class WebRTCSender:
 
                 print(f"🔥🔥 [WebRTC] offer received: type={sdp_type}, sdp_len={len(sdp)}", flush=True)
 
-                GLib.idle_add(self._build_pipeline)
-                self._set_remote_description(sdp, sdp_type)
-                self._create_answer()
+                self._run_on_glib(self._build_pipeline, timeout=15.0)
+                self._run_on_glib(self._set_remote_description, sdp, sdp_type, timeout=10.0)
+                self._run_on_glib(self._create_answer, timeout=10.0)
 
                 ok = self._answer_ready_event.wait(timeout=20.0)
                 if not ok or self._local_answer is None:
