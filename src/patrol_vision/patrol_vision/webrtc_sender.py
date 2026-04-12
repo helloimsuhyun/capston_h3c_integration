@@ -361,13 +361,18 @@ class WebRTCSender:
             if not added:
                 raise RuntimeError("failed to add webrtcbin to pipeline")
 
+            self.pipeline.set_state(Gst.State.PAUSED)
+            time.sleep(0.2)
+
             pay_src_pad = pay.get_static_pad("src")
             if pay_src_pad is None:
                 raise RuntimeError("failed to get pay src pad")
 
             self.webrtc_sink_pad = self._request_webrtc_sink_pad()
+
             if self.webrtc_sink_pad is None:
                 raise RuntimeError("failed to request webrtcbin sink pad")
+
 
             sink_caps = self.webrtc_sink_pad.query_caps(None)
             print("[WebRTC] webrtc sink caps =", sink_caps.to_string() if sink_caps else "None")
