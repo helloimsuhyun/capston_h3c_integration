@@ -303,7 +303,6 @@ class WebRTCSender:
             f'! {enc} '
             f'! h264parse config-interval=-1 '
             f'! rtph264pay pt=96 config-interval=1 '
-            f'! application/x-rtp,media=video,encoding-name=H264,payload=96 '
             f'! webrtc.'
         )
     
