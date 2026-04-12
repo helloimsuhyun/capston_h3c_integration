@@ -104,7 +104,11 @@ class _WebRTCImageSubscriber(Node):
 
     def push_timer_callback(self):
         with self.owner._frame_lock:
-            if self.owner._latest_bgr is None or self.owner.appsrc is None:
+            if (
+                self.owner._latest_bgr is None
+                or self.owner.appsrc is None
+                or not self.owner._pipeline_ready
+            ):
                 return
             frame = self.owner._latest_bgr
             stamp_ns = self.owner._latest_stamp_ns
@@ -134,7 +138,7 @@ class WebRTCSender:
         fps: int = 30,
         bitrate: int = 4_000_000,
         resize: bool = True,
-        use_hw_encoder: bool = False,
+        use_hw_encoder: bool = True,
         stun_server: str = "stun://stun.l.google.com:19302",
         poll_interval_sec: float = 1.0,
     ):
@@ -175,6 +179,10 @@ class WebRTCSender:
         self.appsrc = None
         self.webrtc = None
         self.webrtc_sink_pad = None
+
+        # 핵심: pipeline 준비 상태 / 수동 PTS
+        self._pipeline_ready = False
+        self._push_pts_ns = 0
 
         Gst.init(None)
 
@@ -324,6 +332,8 @@ class WebRTCSender:
         self.appsrc = None
         self.webrtc = None
         self.webrtc_sink_pad = None
+        self._pipeline_ready = False
+        self._push_pts_ns = 0
 
     def _request_webrtc_sink_pad(self):
         pad = None
@@ -395,9 +405,8 @@ class WebRTCSender:
                 encoder.set_property("preset-level", 1)
                 encoder.set_property("maxperf-enable", 1)
 
-                # 브라우저/Flutter 쪽 호환성 보강
                 try:
-                    encoder.set_property("profile", 0)   # baseline
+                    encoder.set_property("profile", 0)
                 except Exception as e:
                     print("[WebRTC] encoder profile=0 set failed:", repr(e))
 
@@ -410,7 +419,6 @@ class WebRTCSender:
                     encoder.set_property("insert-aud", True)
                 except Exception as e:
                     print("[WebRTC] encoder insert-aud set failed:", repr(e))
-
             else:
                 nvvidconv = None
                 capsfilter_nv12 = None
@@ -469,7 +477,7 @@ class WebRTCSender:
             self.appsrc.set_property("is-live", True)
             self.appsrc.set_property("block", False)
             self.appsrc.set_property("format", Gst.Format.TIME)
-            self.appsrc.set_property("do-timestamp", True)
+            self.appsrc.set_property("do-timestamp", False)
 
             queue.set_property("leaky", 2)
             queue.set_property("max-size-buffers", 1)
@@ -531,10 +539,13 @@ class WebRTCSender:
             if ret == Gst.StateChangeReturn.FAILURE:
                 raise RuntimeError("failed to set pipeline PLAYING")
 
+            self._push_pts_ns = 0
+            self._pipeline_ready = True
+
             print("[WebRTC] GStreamer pipeline PLAYING")
 
     def _push_frame(self, frame_bgr: np.ndarray, stamp_ns: int):
-        if self.appsrc is None:
+        if self.appsrc is None or not self._pipeline_ready:
             return
 
         if not frame_bgr.flags["C_CONTIGUOUS"]:
@@ -545,11 +556,12 @@ class WebRTCSender:
         buf.fill(0, data)
 
         duration_ns = int(1e9 / float(self.fps))
-        pts = stamp_ns if stamp_ns > 0 else time.time_ns()
 
-        buf.pts = pts
-        buf.dts = pts
+        buf.pts = self._push_pts_ns
+        buf.dts = self._push_pts_ns
         buf.duration = duration_ns
+
+        self._push_pts_ns += duration_ns
 
         ret = self.appsrc.emit("push-buffer", buf)
         if ret != Gst.FlowReturn.OK:
