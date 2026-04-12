@@ -312,12 +312,16 @@ class WebRTCSender:
             self._answer_ready_event.clear()
             self._local_answer = None
 
+            # 기존 pipeline 종료
             if self.pipeline is not None:
                 try:
                     self.pipeline.set_state(Gst.State.NULL)
                 except Exception as e:
                     print("[WebRTC] old pipeline shutdown failed:", repr(e))
 
+            # =========================
+            # 1. pipeline 생성
+            # =========================
             pipeline_str = self._pipeline_string()
             print("[WebRTC] creating GStreamer pipeline:")
             print(pipeline_str)
@@ -334,7 +338,9 @@ class WebRTCSender:
             if pay is None:
                 raise RuntimeError("failed to get rtph264pay named 'pay'")
 
-            # webrtcbin을 수동 생성해서 pipeline에 추가
+            # =========================
+            # 2. webrtcbin 생성
+            # =========================
             self.webrtc = Gst.ElementFactory.make("webrtcbin", "webrtc")
             if self.webrtc is None:
                 raise RuntimeError("failed to create webrtcbin")
@@ -344,50 +350,66 @@ class WebRTCSender:
 
             self.pipeline.add(self.webrtc)
 
-            # webrtcbin은 상태 동기화 필요
-            self.webrtc.sync_state_with_parent()
-
-            # pay src -> webrtc sink_%u request pad 수동 연결
+            # =========================
+            # 3. pay → webrtc 연결
+            # =========================
             pay_src_pad = pay.get_static_pad("src")
             if pay_src_pad is None:
                 raise RuntimeError("failed to get pay src pad")
 
-            webrtc_sink_pad = self.webrtc.get_request_pad("sink_%u")
+            # 🔥 핵심: request_pad 방식
+            templ = self.webrtc.get_pad_template("sink_%u")
+            if templ is None:
+                raise RuntimeError("webrtcbin sink_%u pad template not found")
 
+            webrtc_sink_pad = self.webrtc.request_pad(templ, None, None)
             if webrtc_sink_pad is None:
-                print("[WebRTC] sink_%u failed → trying sink_0")
-                webrtc_sink_pad = self.webrtc.get_request_pad("sink_0")
-
-            if webrtc_sink_pad is None:
-                raise RuntimeError("failed to get webrtcbin request sink pad")
-
+                raise RuntimeError("failed to request webrtcbin sink pad")
 
             link_ret = pay_src_pad.link(webrtc_sink_pad)
             if link_ret != Gst.PadLinkReturn.OK:
                 raise RuntimeError(f"failed to link payloader to webrtcbin: {link_ret}")
 
+            print("[WebRTC] payloader linked to webrtcbin")
+
+            # =========================
+            # 4. appsrc 설정
+            # =========================
             caps = Gst.Caps.from_string(
                 f"video/x-raw,format=BGR,width={self.width},height={self.height},framerate={self.fps}/1"
             )
+
             self.appsrc.set_property("caps", caps)
             self.appsrc.set_property("is-live", True)
             self.appsrc.set_property("block", False)
             self.appsrc.set_property("format", Gst.Format.TIME)
             self.appsrc.set_property("do-timestamp", True)
 
+            # =========================
+            # 5. bus
+            # =========================
             bus = self.pipeline.get_bus()
             bus.add_signal_watch()
             bus.connect("message", self._on_bus_message)
 
+            # =========================
+            # 6. webrtc callbacks
+            # =========================
             self.webrtc.connect("on-ice-candidate", self._on_ice_candidate)
             self.webrtc.connect("notify::ice-gathering-state", self._on_ice_gathering_state_changed)
             self.webrtc.connect("notify::ice-connection-state", self._on_ice_connection_state_changed)
             self.webrtc.connect("notify::connection-state", self._on_connection_state_changed)
             self.webrtc.connect("notify::signaling-state", self._on_signaling_state_changed)
 
+            # =========================
+            # 7. pipeline 실행
+            # =========================
             ret = self.pipeline.set_state(Gst.State.PLAYING)
             if ret == Gst.StateChangeReturn.FAILURE:
                 raise RuntimeError("failed to set pipeline PLAYING")
+
+            # 🔥 sync는 여기서 (중요)
+            self.webrtc.sync_state_with_parent()
 
             print("[WebRTC] GStreamer pipeline PLAYING")
 
