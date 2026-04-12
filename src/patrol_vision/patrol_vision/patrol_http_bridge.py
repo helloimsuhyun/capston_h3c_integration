@@ -11,6 +11,8 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import uvicorn
 
+from fastapi.middleware.cors import CORSMiddleware
+
 
 class PlaceReq(BaseModel):
     place_id: str
@@ -28,6 +30,14 @@ class PatrolHttpBridge(Node):
         )
 
         self.app = FastAPI()
+
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
         @self.app.get("/health")
         def health():
