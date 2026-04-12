@@ -134,7 +134,7 @@ class WebRTCSender:
         fps: int = 30,
         bitrate: int = 4_000_000,
         resize: bool = True,
-        use_hw_encoder: bool = True,
+        use_hw_encoder: bool = False,
         stun_server: str = "stun://stun.l.google.com:19302",
         poll_interval_sec: float = 1.0,
     ):
