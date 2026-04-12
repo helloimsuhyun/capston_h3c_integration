@@ -209,11 +209,6 @@ class PersonTrackerNode(Node):
             self.get_logger().error(f"Depth image conversion failed: {e}")
             return
 
-        self.get_logger().info(
-            "[SYNC] color+depth packet received",
-            throttle_duration_sec=2.0
-        )
-
         packet = {
             "stamp_ns": self.msg_to_ns(color_msg),
             "recv_ns": self.get_clock().now().nanoseconds,
@@ -253,16 +248,7 @@ class PersonTrackerNode(Node):
                 now_ns = self.get_clock().now().nanoseconds
                 age_ms = (now_ns - packet["recv_ns"]) / 1e6
 
-                self.get_logger().info(
-                    f"[WORKER] packet picked age={age_ms:.1f} ms",
-                    throttle_duration_sec=2.0
-                )
-
                 if age_ms > self.stale_frame_ms:
-                    self.get_logger().warn(
-                        f"[DROP] stale frame: {age_ms:.1f} ms",
-                        throttle_duration_sec=2.0
-                    )
                     continue
 
                 if not self.inference_enabled:
