@@ -72,6 +72,7 @@ def generate_launch_description():
     return LaunchDescription([
         server_ip_arg,
         image_topic_arg,
+        yolo_mode_arg,
         vision_launch,
         bridge_launch,
         audio_launch,
