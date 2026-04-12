@@ -296,6 +296,7 @@ class WebRTCSender:
             )
 
         return (
+            f'webrtcbin name=webrtc bundle-policy=max-bundle stun-server="{self.stun_server}" '
             f'appsrc name=src is-live=true block=false format=time do-timestamp=true '
             f'caps=video/x-raw,format=BGR,width={self.width},height={self.height},framerate={self.fps}/1 '
             f'! queue leaky=downstream max-size-buffers=1 '
@@ -303,7 +304,7 @@ class WebRTCSender:
             f'! h264parse config-interval=-1 '
             f'! rtph264pay pt=96 config-interval=1 '
             f'! application/x-rtp,media=video,encoding-name=H264,payload=96 '
-            f'! webrtcbin name=webrtc bundle-policy=max-bundle stun-server="{self.stun_server}"'
+            f'! webrtc.'
         )
     
     def _build_pipeline(self):
