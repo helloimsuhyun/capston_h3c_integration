@@ -476,12 +476,6 @@ class WebRTCSender:
             self.webrtc.connect("notify::connection-state", self._on_connection_state_changed)
             self.webrtc.connect("notify::signaling-state", self._on_signaling_state_changed)
 
-            ret = self.pipeline.set_state(Gst.State.PAUSED)
-            if ret == Gst.StateChangeReturn.FAILURE:
-                raise RuntimeError("failed to set pipeline PAUSED before requesting webrtc sink pad")
-
-            time.sleep(0.2)
-
             pay_src_pad = pay.get_static_pad("src")
             if pay_src_pad is None:
                 raise RuntimeError("failed to get pay src pad")
