@@ -1,6 +1,6 @@
 /**:
   ros__parameters:
-    start_enabled: false
+    start_enabled: true
 
 person_tracker_node:
   ros__parameters:
