@@ -375,9 +375,6 @@ class PersonTrackerNode(Node):
             else:
                 label = f"id={track_id} ({u},{v}) z={z_m:.2f}m {conf:.2f}"
 
-            if self.log_fps:
-                label += f" fps={self.proc_fps:.1f}"
-
             cv2.putText(
                 annotated,
                 label,
@@ -386,6 +383,39 @@ class PersonTrackerNode(Node):
                 0.55,
                 color_box,
                 2
+            )
+        if self.log_fps:
+            h, w = annotated.shape[:2]
+
+            text = f"FPS: {self.proc_fps:.1f}"
+
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 1.2   
+            thickness = 3
+
+            (tw, th), _ = cv2.getTextSize(text, font, font_scale, thickness)
+
+            x = w - tw - 20   # 우측 여백
+            y = th + 20       # 상단 여백
+
+            # 배경 박스 (가독성)
+            cv2.rectangle(
+                annotated,
+                (x - 10, y - th - 10),
+                (x + tw + 10, y + 10),
+                (0, 0, 0),
+                -1
+            )
+
+            # 텍스트
+            cv2.putText(
+                annotated,
+                text,
+                (x, y),
+                font,
+                font_scale,
+                (0, 255, 0),
+                thickness
             )
 
         return annotated, tracks

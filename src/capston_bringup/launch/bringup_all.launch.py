@@ -20,13 +20,13 @@ def generate_launch_description():
 
     image_topic_arg = DeclareLaunchArgument(
         'image_topic',
-        default_value='/camera/color/image_raw', # 리얼센스로 변경되면 /camera/camera/color/image_raw
+        default_value='/camera/camera/color/image_raw', # 리얼센스로 변경되면 /camera/camera/color/image_raw
         description='Image topic used by patrol vision nodes.'
     )
 
     yolo_mode_arg = DeclareLaunchArgument(
         'yolo_mode',
-        default_value='webcam' # 리얼센스로 변경되면 'realsense'
+        default_value='realsense' # 리얼센스로 변경되면 'realsense'
     )
     
     # Deriving URLs from the single server_ip
@@ -37,7 +37,7 @@ def generate_launch_description():
     server_url = ['http://', server_ip, ':8000']
     signaling_url = ['http://', server_ip, ':8001']
 
-    """ # 리얼센스 사용시
+    # 리얼센스 사용시
     realsense_launch = IncludeLaunchDescription(
     PythonLaunchDescriptionSource(
         os.path.join(realsense_dir, 'launch', 'rs_launch.py')
@@ -46,7 +46,7 @@ def generate_launch_description():
             'rgb_camera.color_profile': '640x480x30',
             'depth_module.depth_profile': '640x480x30',
             'enable_depth': 'true',
-            'align_depth.enable': 'true'
+            'align_depth.enable': 'true',
 
             'rgb_camera.enable_auto_white_balance': 'false',
             'rgb_camera.white_balance': '4500',   # 값은 환경에 맞게 조정
@@ -54,7 +54,7 @@ def generate_launch_description():
         }.items()
     )
     
-    """
+
 
     vision_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(patrol_vision_dir, 'launch', 'system.launch.py')),
@@ -93,7 +93,7 @@ def generate_launch_description():
         server_ip_arg,
         image_topic_arg,
         yolo_mode_arg,
-        #realsense_launch,
+        realsense_launch,
         vision_launch,
         yolo_launch,
         bridge_launch,
