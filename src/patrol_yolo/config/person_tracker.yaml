@@ -35,3 +35,28 @@ person_tracker_node:
     stale_frame_ms: 300
     log_fps: true
     max_process_fps: 15.0
+
+
+person_following_node:
+  ros__parameters:
+    tracks_topic: "/person_tracking/tracks_json"
+    enable_topic: "/person_tracking/enable"
+
+    target_topic: "/person_tracking/follow_target"
+    state_topic: "/person_tracking/follow_state"
+
+    target_strategy: "largest_bbox"
+
+    frame_center_u: 640
+
+    min_confidence: 0.5
+    min_bbox_w: 40
+    min_bbox_h: 80
+
+    min_stable_hits: 3
+    lost_timeout_sec: 3.0
+    id_switch_debounce_sec: 0.8
+    max_no_depth_streak: 3
+    max_frame_age_sec: 0.3
+
+    state_publish_hz: 10.0

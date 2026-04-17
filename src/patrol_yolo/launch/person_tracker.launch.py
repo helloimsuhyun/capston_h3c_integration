@@ -28,7 +28,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             'mode',
-            default_value='webcam'
+            default_value='realsense'
         ),
 
         DeclareLaunchArgument(
@@ -95,4 +95,22 @@ def generate_launch_description():
                 }
             ],
         ),
+
+        Node(
+            package='patrol_yolo',
+            executable='person_following_node',
+            name='person_following_node',
+            output='screen',
+            parameters=[
+                config,
+                {
+                    'tracks_topic':  '/person_tracking/tracks_json',
+                    'enable_topic':  '/person_tracking/enable',
+                    'target_topic':  '/person_tracking/follow_target',
+                    'state_topic':   '/person_tracking/follow_state',
+                }
+            ],
+        ),
     ])
+
+
