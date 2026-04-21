@@ -100,6 +100,14 @@ class PersonFollowingNode(Node):
         # depth 없음 허용 연속 프레임 수. 초과 시 TRACKING → LOST
         self.declare_parameter("max_no_depth_streak",     3)
 
+        # depth 없을 시에 잠시 이전의 좌표를 씀
+        self.declare_parameter("target_hold_sec", 0.5)
+
+        self.target_hold_sec = float(self.get_parameter("target_hold_sec").value)
+
+        self.last_valid_target_track: Optional[dict] = None
+        self.last_valid_target_time: float = 0.0
+
         # stale frame drop: tracks_json header stamp 기준
         # 현재 시각과의 차이가 이 값을 초과하면 해당 프레임을 무시
         self.declare_parameter("max_frame_age_sec",       0.3)
@@ -280,17 +288,34 @@ class PersonFollowingNode(Node):
                         "Z_cam" in target_track)
 
         if has_depth:
-            # depth 정상 → streak 리셋 후 퍼블리시
             with self._lock:
-                self.no_depth_streak = 0   # ← lock 안에서 리셋
+                self.no_depth_streak = 0
+                self.last_valid_target_track = {
+                    "X_cam": float(target_track["X_cam"]),
+                    "Y_cam": float(target_track["Y_cam"]),
+                    "Z_cam": float(target_track["Z_cam"]),
+                }
+                self.last_valid_target_time = now
+
             self._publish_target(target_track)
 
         else:
-            # depth 없음 → streak 증가 (lock 보호)
             with self._lock:
                 self.no_depth_streak += 1
                 streak = self.no_depth_streak
                 max_streak = self.max_no_depth_streak
+                last_track = self.last_valid_target_track
+                last_time = self.last_valid_target_time
+
+            hold_age = now - last_time
+
+            if last_track is not None and hold_age <= self.target_hold_sec:
+                self.get_logger().debug(
+                    f"[DEPTH] missing, reuse last target "
+                    f"age={hold_age:.2f}s streak={streak}/{max_streak}"
+                )
+                self._publish_target(last_track)
+                return
 
             self.get_logger().debug(
                 f"[DEPTH] no depth streak={streak}/{max_streak} "
@@ -298,16 +323,17 @@ class PersonFollowingNode(Node):
             )
 
             if streak >= max_streak:
-                # 연속 N프레임 depth 없음 → LOST
                 with self._lock:
-                    self.state           = LOST
+                    self.state = LOST
                     self.lost_start_time = now
                     self.no_depth_streak = 0
+                    self.last_valid_target_track = None
+                    self.last_valid_target_time = 0.0
+
                 self.get_logger().info(
                     f"[FSM] TRACKING → LOST "
                     f"(no depth for {max_streak} consecutive frames)"
                 )
-
     # ────────────────────────────────────────────────────────────────────
     # FSM 헬퍼
 
