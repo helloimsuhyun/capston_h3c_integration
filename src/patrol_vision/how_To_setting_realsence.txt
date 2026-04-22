@@ -35,10 +35,7 @@ cd librealsense
 
 mkdir build && cd build
 
-cmake .. \
--DBUILD_WITH_CUDA=true \
--DFORCE_RSUSB_BACKEND=true \ 
--DBUILD_EXAMPLES=true
+cmake .. -DBUILD_WITH_CUDA=true -DFORCE_RSUSB_BACKEND=true -DBUILD_EXAMPLES=true
 
 [옵션 설명]
 
@@ -46,7 +43,8 @@ cmake .. \
   → Jetson USB 문제 해결 (필수)
 * BUILD_WITH_CUDA
   → GPU 사용
-
+make -j$(nproc)
+sudo make install
 [빌드 및 설치]
 
 make -j$(nproc)

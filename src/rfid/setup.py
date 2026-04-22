@@ -19,7 +19,7 @@ setup(
     maintainer_email='you@example.com',
     description='RFID secondary authentication node',
     license='Apache-2.0',
-    tests_require=['pytest'],
+    #tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'secondary_auth_node = rfid.secondary_auth_node:main',

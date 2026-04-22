@@ -13,7 +13,12 @@ from rclpy.node import Node
 from std_msgs.msg import Float32
 
 from security_audio_msgs.msg import AudioClipInfo
-from .doa_wpe_music import WpeMusicDoaEstimator
+#from .doa_wpe_music import WpeMusicDoaEstimator
+
+try:
+    from .doa_wpe_music import WpeMusicDoaEstimator
+except Exception:
+    WpeMusicDoaEstimator = None
 
 
 def compute_dbfs(x: np.ndarray, eps: float = 1e-12) -> float:

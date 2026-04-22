@@ -4,7 +4,7 @@
     pre_trigger_sec: 1.0
     post_trigger_sec: 0.5
 
-    trigger_dbfs: -10.0
+    trigger_dbfs: -23.0
     trigger_consecutive_chunks: 3
     min_trigger_interval_sec: 1.0
 
@@ -17,7 +17,7 @@
     channel_index: 0
 
     doa_topic: "/sound/doa_deg"
-    enable_doa_sub: true
+    enable_doa_sub: false
 
     # 기존 realtime DOA node와 최종 event DOA가 같은 기준이 되도록 사용
     front_offset_deg: 90.0
