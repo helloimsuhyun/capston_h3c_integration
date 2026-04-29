@@ -29,7 +29,7 @@ class SecondaryAuthNode(Node):
         # =========================
         # 사용자 설정
         # =========================
-        self.server_base_url = 'http://192.168.0.16:8000'
+        self.server_base_url = 'http://192.168.0.221:8000'
 
         self.follow_person_id_topic = '/person_tracking/follow_person_id'
         self.annotated_topic = '/person_tracking/annotated'
