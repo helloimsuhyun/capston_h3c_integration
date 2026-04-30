@@ -85,6 +85,8 @@ class CaptureSender(Node):
 
         self.lock = threading.Lock()
         self.sending = False
+        self.worker_thread = None
+        self.shutdown_requested = False
 
         self.create_subscription(
             Image,
@@ -106,6 +108,30 @@ class CaptureSender(Node):
         )
 
         self.get_logger().info("capture sender ready")
+    
+    def destroy_node(self):
+        self.get_logger().info("CaptureSender cleanup start")
+        self.shutdown_requested = True
+
+        try:
+            if hasattr(self, "webrtc_sender") and self.webrtc_sender is not None:
+                self.webrtc_sender.stop()
+                self.get_logger().info("WebRTC sender stopped")
+        except Exception as e:
+            self.get_logger().warn(f"WebRTC sender stop failed: {e}")
+
+        try:
+            if self.worker_thread is not None and self.worker_thread.is_alive():
+                self.get_logger().info("Waiting for send_worker thread...")
+                self.worker_thread.join(timeout=3.0)
+
+                if self.worker_thread.is_alive():
+                    self.get_logger().warn("send_worker thread still alive after timeout")
+        except Exception as e:
+            self.get_logger().warn(f"worker thread join failed: {e}")
+
+        super().destroy_node()
+        self.get_logger().info("CaptureSender cleanup done")
 
     def image_callback(self, msg: Image):
         img = self.bridge.imgmsg_to_cv2(msg, "bgr8")
@@ -129,10 +155,11 @@ class CaptureSender(Node):
 
         self.get_logger().info(f"capture trigger received: place_id={self.place_id}")
 
-        threading.Thread(
+        self.worker_thread = threading.Thread(
             target=self.send_worker,
-            daemon=True,
-        ).start()
+            daemon=False,
+        )
+        self.worker_thread.start()
 
     def publish_capture_result(self, status: str, place_id: str):
         msg = String()
@@ -141,6 +168,9 @@ class CaptureSender(Node):
         self.get_logger().info(f"published /patrol/capture_done = {msg.data}")
 
     def send_worker(self):
+        if self.shutdown_requested:
+            return
+        
         current_place_id = self.place_id
 
         try:
@@ -193,24 +223,15 @@ def main():
 
     try:
         rclpy.spin(node)
+
     except KeyboardInterrupt:
         node.get_logger().info("KeyboardInterrupt received, shutting down.")
+
     finally:
-        try:
-            node.webrtc_sender.stop()
-        except Exception:
-            pass
+        node.destroy_node()
 
-        try:
-            node.destroy_node()
-        except Exception:
-            pass
-
-        try:
+        if rclpy.ok():
             rclpy.shutdown()
-        except Exception:
-            pass
-
 
 if __name__ == "__main__":
     main()
