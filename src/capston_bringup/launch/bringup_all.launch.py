@@ -1,5 +1,5 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
+from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, GroupAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from ament_index_python.packages import get_package_share_directory
@@ -39,10 +39,15 @@ def generate_launch_description():
     server_url = ['http://', server_ip, ':8000']
     signaling_url = ['http://', server_ip, ':8001']
 
-    realsense_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(capston_bringup_dir, 'launch', 'realsense_wrapper.launch.py')
-        )
+    realsense_launch = GroupAction(
+        scoped=True,
+        actions=[
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    os.path.join(capston_bringup_dir, 'launch', 'realsense_wrapper.launch.py')
+                )
+            )
+        ]
     )
     
     vision_launch = IncludeLaunchDescription(
