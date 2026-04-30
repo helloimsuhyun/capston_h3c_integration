@@ -1,28 +1,24 @@
 from launch import LaunchDescription
-from launch_ros.actions import Node
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from ament_index_python.packages import get_package_share_directory
+import os
+
 
 def generate_launch_description():
+    realsense_dir = get_package_share_directory('realsense2_camera')
+
     return LaunchDescription([
-        Node(
-            package='realsense2_camera',
-            executable='realsense2_camera_node',
-            namespace='camera',
-            name='camera',
-            output='screen',
-            parameters=[{
-                'camera_name': 'camera',
-                'camera_namespace': 'camera',
-
-                'enable_color': True,
-                'enable_depth': True,
-                'enable_sync': True,
-
-                'align_depth.enable': True,
-                'depth_module.depth_profile': '1280x720x30',
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(realsense_dir, 'launch', 'rs_launch.py')
+            ),
+            launch_arguments={
                 'rgb_camera.color_profile': '1280x720x30',
-
-                'depth_module.enable_auto_exposure': True,
-                'rgb_camera.enable_auto_exposure': True,
-            }]
+                'depth_module.depth_profile': '1280x720x30',
+                'enable_depth': 'true',
+                'align_depth.enable': 'true',
+                'rgb_camera.enable_auto_exposure': 'true',
+            }.items()
         )
     ])
