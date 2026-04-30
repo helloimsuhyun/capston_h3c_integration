@@ -139,6 +139,8 @@ class CaptureSender(Node):
         self.buffer.update(rgb)
 
     def trigger_cb(self, msg: String):
+        if self.shutdown_requested:
+            return
         place_id = msg.data.strip()
 
         if not place_id:
