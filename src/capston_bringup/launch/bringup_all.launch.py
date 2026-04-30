@@ -1,5 +1,5 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, GroupAction
+from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, GroupAction, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from ament_index_python.packages import get_package_share_directory
@@ -102,11 +102,20 @@ def generate_launch_description():
         server_ip_arg,
         image_topic_arg,
         yolo_mode_arg,
-        vision_launch,
-        yolo_launch,
-        bridge_launch,
-        audio_launch,
-        rfid_launch,
-        robot_gui_launch,
-        realsense_launch
+
+        # 리얼센스 먼저 실행
+        realsense_launch,
+
+        # 카메라 초기화 시간 확보 후 나머지 실행
+        TimerAction(
+            period=3.0,
+            actions=[
+                vision_launch,
+                yolo_launch,
+                bridge_launch,
+                audio_launch,
+                rfid_launch,
+                robot_gui_launch,
+            ]
+        )
     ])

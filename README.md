@@ -7,5 +7,8 @@
 - 황일겸 — GUI Frontend ([luceinaltis0509@gmail.com](mailto:luceinaltis0509@gmail.com))
 - 최수현 — Vision, Backend Server ([chsuk02@hanyang.ac.kr](mailto:chsuk02@hanyang.ac.kr))
 
+# howtorun
+cd /capston_h3c_integration
+./run_all.sh
 
-
+chmod +x clean_before_launch.sh run_all.sh
