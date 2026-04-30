@@ -10,6 +10,8 @@ def generate_launch_description():
     patrol_bridge_dir = get_package_share_directory('patrol_bridge')
     security_audio_system_dir = get_package_share_directory('security_audio_system')
     patrol_yolo_system_dir = get_package_share_directory('patrol_yolo')
+    rfid_dir = get_package_share_directory('rfid')
+    robot_gui_dir = get_package_share_directory('robot_gui')
     capston_bringup_dir = get_package_share_directory('capston_bringup')
 
     server_ip_arg = DeclareLaunchArgument(
@@ -76,6 +78,21 @@ def generate_launch_description():
         # 모드 변경 및 설정 변경 8091 포트 사용 중 (동일 ip)
     )
 
+    rfid_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(rfid_dir, 'launch', 'rfid.launch.py')
+        ),
+        launch_arguments={
+            'server_url': server_url
+        }.items()
+    )
+
+    robot_gui_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(robot_gui_dir, 'launch', 'robot_gui.launch.py')
+        )
+    )
+
     return LaunchDescription([
         server_ip_arg,
         image_topic_arg,
@@ -84,5 +101,7 @@ def generate_launch_description():
         yolo_launch,
         bridge_launch,
         audio_launch,
+        rfid_launch,
+        robot_gui_launch,
         realsense_launch
     ])
