@@ -7,8 +7,12 @@ import json
 import math
 import time
 import threading
-import pygame
 from typing import Optional
+
+try:
+    import pygame
+except ImportError:
+    pygame = None
 
 import cv2
 import yaml
@@ -22,8 +26,10 @@ from geometry_msgs.msg import Pose2D
 from sensor_msgs.msg import Image
 from std_msgs.msg import String, Bool
 
-# /sound/event 메시지
-from security_audio_msgs.msg import SoundEvent
+try:
+    from security_audio_msgs.msg import SoundEvent
+except Exception:
+    SoundEvent = None
 
 from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation
 from PyQt5.QtGui import QImage, QPixmap, QFont
@@ -40,47 +46,48 @@ from PyQt5.QtWidgets import (
 
 
 # ==========================================================
-# Theme
+# Dark Theme
 # ==========================================================
 COLORS = {
     "green": {
         "border": "#22c55e",
-        "bg": "#ecfdf5",
-        "text": "#15803d",
+        "bg": "#052e1b",
+        "text": "#86efac",
     },
     "blue": {
-        "border": "#2563eb",
-        "bg": "#eff6ff",
-        "text": "#1d4ed8",
+        "border": "#3b82f6",
+        "bg": "#0b1f44",
+        "text": "#93c5fd",
     },
     "orange": {
         "border": "#f97316",
-        "bg": "#fff7ed",
-        "text": "#c2410c",
+        "bg": "#431407",
+        "text": "#fdba74",
     },
     "red": {
         "border": "#ef4444",
-        "bg": "#fef2f2",
-        "text": "#dc2626",
+        "bg": "#450a0a",
+        "text": "#fca5a5",
     },
     "gray": {
-        "border": "#9ca3af",
-        "bg": "#f3f4f6",
-        "text": "#4b5563",
+        "border": "#64748b",
+        "bg": "#1f2937",
+        "text": "#d1d5db",
     },
     "purple": {
         "border": "#8b5cf6",
-        "bg": "#f5f3ff",
-        "text": "#6d28d9",
+        "bg": "#2e1065",
+        "text": "#c4b5fd",
     },
 }
 
-DARK_BG = "#111827"
-DARK_BORDER = "#1f2937"
-APP_BG = "#f5f7fb"
-CARD_BORDER = "#d8dee9"
-TEXT_DARK = "#111827"
-TEXT_SUB = "#374151"
+APP_BG = "#0b1120"
+PANEL_BG = "#111827"
+PANEL_BG_2 = "#0f172a"
+CARD_BORDER = "#334155"
+TEXT_MAIN = "#f8fafc"
+TEXT_SUB = "#cbd5e1"
+TEXT_MUTED = "#94a3b8"
 
 
 # ==========================================================
@@ -88,7 +95,6 @@ TEXT_SUB = "#374151"
 # ==========================================================
 class GuiState:
     def __init__(self):
-        # ROS spin thread와 Qt UI thread가 동시에 접근하므로 state 자체에 lock을 둔다.
         self.lock = threading.RLock()
 
         self.latest_frame = None
@@ -105,37 +111,28 @@ class GuiState:
 
         self.follow_state: str = "IDLE"
 
-        # =========================
-        # 2차 인증 상태
-        # =========================
         self.auth_ready: bool = False
-        self.auth_result_status: str = "idle"   # idle | waiting | success | fail | timeout | unknown
+        self.auth_result_status: str = "idle"
         self.auth_event_id: str = "-"
 
         self.patrol_command: str = "unknown"
 
-        self.yolo_enable: bool = False
-        self.audio_upload_enable: bool = True
+        # None = 아직 토픽 수신 전
+        self.yolo_enable: Optional[bool] = None
+        self.audio_upload_enable: Optional[bool] = None
         self.audio_allowed_labels: str = "ALL"
 
-        # =========================
-        # Capture 상태
-        # =========================
-        self.capture_status: str = "IDLE"       # IDLE | CAPTURING | DONE | FAILED
+        self.capture_status: str = "IDLE"
         self.capture_place_id: str = "-"
         self.capture_last_msg: str = "-"
         self.capture_last_time: float = 0.0
 
-        # =========================
-        # Audio event 상태
-        # =========================
-        self.audio_event_status: str = "IDLE"   # IDLE | DETECTED | IGNORED
+        self.audio_event_status: str = "IDLE"
         self.audio_event_label: str = "-"
         self.audio_event_doa: Optional[float] = None
         self.audio_event_id: str = "-"
         self.audio_event_last_time: float = 0.0
 
-        # Map state
         self.map_image = None
         self.map_resolution: Optional[float] = None
         self.map_origin_x: Optional[float] = None
@@ -216,7 +213,20 @@ class RobotGuiRosNode(Node):
 
         self.create_subscription(String, capture_trigger_topic, self.capture_trigger_cb, 10)
         self.create_subscription(String, capture_done_topic, self.capture_done_cb, 10)
-        self.create_subscription(SoundEvent, sound_event_topic, self.sound_event_cb, 10)
+
+        if SoundEvent is not None:
+            try:
+                self.create_subscription(SoundEvent, sound_event_topic, self.sound_event_cb, 10)
+            except Exception as e:
+                self.get_logger().warn(
+                    f"[AUDIO] failed to subscribe {sound_event_topic}: {e}. "
+                    "Audio event GUI will stay IDLE."
+                )
+        else:
+            self.get_logger().warn(
+                "[AUDIO] security_audio_msgs.msg.SoundEvent is not available. "
+                "Audio event GUI will stay IDLE."
+            )
 
         self.get_logger().info("Robot GUI ROS node started")
         self.get_logger().info(f"camera={annotated_topic}")
@@ -442,7 +452,7 @@ class RobotGuiRosNode(Node):
             self.state.capture_last_msg = raw if raw else "-"
             self.state.capture_last_time = time.time()
 
-    def sound_event_cb(self, msg: SoundEvent):
+    def sound_event_cb(self, msg):
         label = str(msg.label).strip() if msg.label else "unknown"
 
         if label == "ignore":
@@ -466,24 +476,18 @@ class SecurityRobotGui(QWidget):
         super().__init__()
         self.state = state
 
-        self.setWindowTitle("Security Patrol Robot GUI")
+        self.setWindowTitle("H3C Security Patrol Robot GUI")
         self.resize(1280, 900)
 
-        # 팝업 중복 표시 방지용
         self.last_popup_auth_status = None
         self.last_follow_state = None
-
-        # UI에서 사용할 최신 snapshot
         self.ui_state = {}
 
-        # Map render throttle
         self.last_map_render_time = 0.0
         self.map_render_dt = 0.25  # Map 4Hz
 
-        # Audio event 유지 시간
         self.audio_event_hold_sec = 5.0
 
-        # 음성 안내
         self.voice_dir = "/home/chan/capston_h3c_integration/src/robot_gui/audio"
         self.last_voice_key = None
 
@@ -492,58 +496,64 @@ class SecurityRobotGui(QWidget):
             "tracking_lost": "tracking_lost.wav",
         }
 
-        try:
-            pygame.mixer.init()
-            self.voice_enabled = True
-            print("[VOICE] pygame mixer initialized")
-        except Exception as e:
+        if pygame is None:
             self.voice_enabled = False
-            print(f"[VOICE WARN] pygame mixer init failed: {e}")
+            print("[VOICE WARN] pygame is not installed. Voice disabled.")
+        else:
+            try:
+                pygame.mixer.init()
+                self.voice_enabled = True
+                print("[VOICE] pygame mixer initialized")
+            except Exception as e:
+                self.voice_enabled = False
+                print(f"[VOICE WARN] pygame mixer init failed: {e}")
 
         self.camera_label = QLabel("Waiting for /person_tracking/annotated ...")
         self.camera_label.setAlignment(Qt.AlignCenter)
         self.camera_label.setMinimumHeight(430)
         self.camera_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.camera_label.setStyleSheet("""
-            QLabel {
-                background-color: #0f1115;
-                color: #d8dee9;
-                border: 2px solid #2b3038;
+        self.camera_label.setStyleSheet(f"""
+            QLabel {{
+                background-color: #020617;
+                color: {TEXT_SUB};
+                border: 2px solid {CARD_BORDER};
                 border-radius: 12px;
                 padding: 8px;
                 font-size: 16px;
-                font-weight: 700;
-            }
+                font-weight: 800;
+            }}
         """)
 
-        self.map_label = QLabel("Waiting for map ...")
+        self.map_label = QLabel("Map not loaded")
         self.map_label.setAlignment(Qt.AlignCenter)
         self.map_label.setMinimumHeight(430)
         self.map_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.map_label.setStyleSheet("""
-            QLabel {
-                background-color: #151922;
-                color: #d8dee9;
-                border: 2px solid #2b3038;
+        self.map_label.setStyleSheet(f"""
+            QLabel {{
+                background-color: #020617;
+                color: {TEXT_SUB};
+                border: 2px solid {CARD_BORDER};
                 border-radius: 12px;
                 padding: 8px;
                 font-size: 16px;
-                font-weight: 700;
-            }
+                font-weight: 800;
+            }}
         """)
 
-        # 하단 메인 카드
+        self.robot_goal_label = QLabel()
+
         self.capture_state_label = QLabel()
         self.audio_event_label = QLabel()
         self.follow_state_label = QLabel()
         self.auth_state_label = QLabel()
 
-        # Mode 배지
         self.yolo_enable_label = QLabel()
         self.audio_upload_label = QLabel()
 
-        # 맨 아래 상태바
-        self.footer_status_label = QLabel()
+        self.robot_goal_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.robot_goal_label.setMinimumHeight(250)
+        self.robot_goal_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.robot_goal_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
         for label in [
             self.capture_state_label,
@@ -552,7 +562,7 @@ class SecurityRobotGui(QWidget):
             self.auth_state_label,
         ]:
             label.setAlignment(Qt.AlignCenter)
-            label.setMinimumHeight(112)
+            label.setMinimumHeight(120)
             label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             label.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
@@ -561,13 +571,9 @@ class SecurityRobotGui(QWidget):
             self.audio_upload_label,
         ]:
             label.setAlignment(Qt.AlignCenter)
-            label.setMinimumHeight(54)
+            label.setMinimumHeight(62)
             label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-
-        self.footer_status_label.setAlignment(Qt.AlignCenter)
-        self.footer_status_label.setMinimumHeight(44)
-        self.footer_status_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
         self._build_layout()
         self._build_auth_popup()
@@ -581,19 +587,19 @@ class SecurityRobotGui(QWidget):
         self.setStyleSheet(f"""
             QWidget {{
                 background-color: {APP_BG};
-                color: {TEXT_DARK};
+                color: {TEXT_MAIN};
                 font-family: DejaVu Sans;
             }}
 
             QGroupBox {{
-                background-color: #ffffff;
+                background-color: {PANEL_BG};
                 border: 2px solid {CARD_BORDER};
                 border-radius: 14px;
                 margin-top: 14px;
                 padding: 12px;
                 font-size: 15px;
-                font-weight: 800;
-                color: #1f2937;
+                font-weight: 900;
+                color: {TEXT_MAIN};
             }}
 
             QGroupBox::title {{
@@ -602,23 +608,23 @@ class SecurityRobotGui(QWidget):
                 padding: 0 8px;
                 left: 12px;
                 color: {TEXT_SUB};
-                background-color: #ffffff;
+                background-color: {PANEL_BG};
             }}
         """)
 
     def _build_layout(self):
         root = QVBoxLayout()
-        root.setContentsMargins(12, 12, 12, 8)
+        root.setContentsMargins(12, 12, 12, 10)
         root.setSpacing(8)
 
-        title = QLabel("Indoor Security Patrol Robot")
+        title = QLabel("H3C Security Patrol Robot")
         title.setFont(QFont("DejaVu Sans", 19, QFont.Bold))
         title.setAlignment(Qt.AlignCenter)
         title.setMinimumHeight(42)
         title.setStyleSheet(f"""
             QLabel {{
-                background-color: #ffffff;
-                color: {TEXT_DARK};
+                background-color: {PANEL_BG};
+                color: {TEXT_MAIN};
                 border: 2px solid {CARD_BORDER};
                 border-radius: 12px;
                 padding: 6px;
@@ -635,9 +641,12 @@ class SecurityRobotGui(QWidget):
         middle = QHBoxLayout()
         middle.setSpacing(10)
 
-        # --------------------------
-        # 중단 좌측: Capture / Audio Event
-        # --------------------------
+        robot_box = QGroupBox("Robot / Goal")
+        robot_layout = QVBoxLayout()
+        robot_layout.setSpacing(8)
+        robot_layout.addWidget(self.robot_goal_label)
+        robot_box.setLayout(robot_layout)
+
         event_box = QGroupBox("Capture / Audio Event")
         event_layout = QVBoxLayout()
         event_layout.setSpacing(10)
@@ -645,9 +654,6 @@ class SecurityRobotGui(QWidget):
         event_layout.addWidget(self.audio_event_label)
         event_box.setLayout(event_layout)
 
-        # --------------------------
-        # 중단 우측: Tracking / Auth / Mode
-        # --------------------------
         security_box = QGroupBox("Tracking / Auth / Mode")
         security_layout = QVBoxLayout()
         security_layout.setSpacing(10)
@@ -663,11 +669,11 @@ class SecurityRobotGui(QWidget):
 
         security_box.setLayout(security_layout)
 
-        middle.addWidget(event_box, stretch=1)
-        middle.addWidget(security_box, stretch=1)
-        root.addLayout(middle, stretch=3)
+        middle.addWidget(robot_box, stretch=2)
+        middle.addWidget(event_box, stretch=3)
+        middle.addWidget(security_box, stretch=3)
 
-        root.addWidget(self.footer_status_label, stretch=0)
+        root.addLayout(middle, stretch=3)
 
         self.setLayout(root)
 
@@ -679,7 +685,7 @@ class SecurityRobotGui(QWidget):
 
         self.auth_popup_label.setStyleSheet("""
             QLabel {
-                background-color: rgba(20, 20, 20, 220);
+                background-color: rgba(15, 23, 42, 235);
                 color: white;
                 border: 4px solid white;
                 border-radius: 28px;
@@ -760,9 +766,8 @@ class SecurityRobotGui(QWidget):
     @staticmethod
     def fmt_pose(x: Optional[float], y: Optional[float], yaw: Optional[float]) -> str:
         if x is None or y is None or yaw is None:
-            return "x:- y:- yaw:-"
-        # footer 길이 절약: x/y는 2자리, yaw는 1자리
-        return f"x:{x:.2f} y:{y:.2f} yaw:{yaw:.1f}"
+            return "x:-  y:-  yaw:-"
+        return f"x:{x:.3f}  y:{y:.3f}  yaw:{yaw:.3f}"
 
     @staticmethod
     def theme(name: str):
@@ -776,8 +781,8 @@ class SecurityRobotGui(QWidget):
         theme_name: str,
         subtitle: str = "",
         value_size: int = 30,
-        title_size: int = 15,
-        subtitle_size: int = 13,
+        title_size: int = 16,
+        subtitle_size: int = 15,
     ):
         c = self.theme(theme_name)
         border = c["border"]
@@ -790,32 +795,38 @@ class SecurityRobotGui(QWidget):
                 border: 3px solid {border};
                 border-radius: 16px;
                 padding: 10px;
-                color: {TEXT_DARK};
+                color: {TEXT_MAIN};
             }}
         """)
 
         html = (
-            f"<div style='font-size:{title_size}px; font-weight:800; color:{TEXT_SUB};'>{title}</div>"
+            f"<div style='font-size:{title_size}px; font-weight:900; color:{TEXT_SUB};'>{title}</div>"
             f"<div style='font-size:{value_size}px; font-weight:950; color:{text_color};'>{value}</div>"
         )
 
         if subtitle:
             html += (
                 f"<div style='font-size:{subtitle_size}px; "
-                f"font-weight:700; color:#4b5563;'>{subtitle}</div>"
+                f"font-weight:800; color:{TEXT_MUTED};'>{subtitle}</div>"
             )
 
         label.setText(html)
 
-    def set_mode_badge(self, label: QLabel, title: str, enabled: bool):
-        theme_name = "green" if enabled else "gray"
+    def set_mode_badge(self, label: QLabel, title: str, enabled: Optional[bool]):
+        if enabled is None:
+            theme_name = "gray"
+            value = "WAITING"
+            value_size = 18
+        else:
+            theme_name = "green" if enabled else "gray"
+            value = "ON" if enabled else "OFF"
+            value_size = 20
+
         c = self.theme(theme_name)
 
         border = c["border"]
         bg = c["bg"]
         text_color = c["text"]
-
-        value = "ON" if enabled else "OFF"
         dot = "●"
 
         label.setStyleSheet(f"""
@@ -823,16 +834,61 @@ class SecurityRobotGui(QWidget):
                 background-color: {bg};
                 border: 2px solid {border};
                 border-radius: 12px;
-                padding: 6px;
-                color: {TEXT_DARK};
+                padding: 8px 6px;
+                color: {TEXT_MAIN};
             }}
         """)
 
         label.setText(
-            f"<span style='font-size:13px; font-weight:800; color:{TEXT_SUB};'>{title}</span>"
+            f"<div style='line-height:1.15; text-align:center;'>"
+            f"<span style='font-size:13px; font-weight:900; color:{TEXT_SUB};'>{title}</span>"
             f"<br>"
-            f"<span style='font-size:22px; font-weight:950; color:{text_color};'>{dot} {value}</span>"
+            f"<span style='font-size:{value_size}px; font-weight:950; color:{text_color};'>{dot} {value}</span>"
+            f"</div>"
         )
+
+    def set_robot_goal_box(self):
+        pose = self.fmt_pose(
+            self.ui_state.get("robot_x"),
+            self.ui_state.get("robot_y"),
+            self.ui_state.get("robot_yaw"),
+        )
+        goal = self.fmt_pose(
+            self.ui_state.get("goal_x"),
+            self.ui_state.get("goal_y"),
+            self.ui_state.get("goal_yaw"),
+        )
+
+        robot_status = self.ui_state.get("robot_status") or "-"
+        command = self.ui_state.get("patrol_command") or "-"
+
+        html = (
+            f"<div style='line-height:1.65;'>"
+
+            f"<div style='font-size:14px; font-weight:950; color:#93c5fd;'>POSE</div>"
+            f"<div style='font-size:16px; font-weight:850; color:{TEXT_MAIN}; margin-bottom:16px;'>{pose}</div>"
+
+            f"<div style='font-size:14px; font-weight:950; color:#86efac;'>GOAL</div>"
+            f"<div style='font-size:16px; font-weight:850; color:{TEXT_MAIN}; margin-bottom:16px;'>{goal}</div>"
+
+            f"<div style='font-size:14px; font-weight:950; color:#c4b5fd;'>STATUS | CMD</div>"
+            f"<div style='font-size:16px; font-weight:950; color:{TEXT_MAIN};'>"
+            f"{robot_status} <span style='color:{TEXT_MUTED};'>|</span> {command}"
+            f"</div>"
+
+            f"</div>"
+        )
+
+        self.robot_goal_label.setStyleSheet(f"""
+            QLabel {{
+                background-color: {PANEL_BG_2};
+                border: 2px solid {CARD_BORDER};
+                border-radius: 14px;
+                padding: 16px;
+                color: {TEXT_MAIN};
+            }}
+        """)
+        self.robot_goal_label.setText(html)
 
     def set_tracking_box(self):
         state = (self.ui_state.get("follow_state") or "").strip().upper()
@@ -892,27 +948,47 @@ class SecurityRobotGui(QWidget):
 
     def set_capture_box(self):
         status = (self.ui_state.get("capture_status") or "IDLE").strip().upper()
-        place = self.ui_state.get("capture_place_id") or "-"
+        capture_place = self.ui_state.get("capture_place_id") or "-"
+        next_place = self.ui_state.get("next_place_id") or "-"
+
+        has_next = str(next_place).strip() not in ["", "-", "None", "none", "NULL", "null"]
 
         if status == "CAPTURING":
             theme_name = "blue"
             value_text = "CAPTURING"
+            subtitle = f"place: {capture_place}"
+
         elif status == "DONE":
             theme_name = "green"
             value_text = "DONE"
+            subtitle = f"place: {capture_place}"
+
         elif status == "FAILED":
             theme_name = "red"
             value_text = "FAILED"
+            subtitle = f"place: {capture_place}"
+
+        elif has_next:
+            theme_name = "blue"
+            value_text = f"MOVING TO {next_place}"
+            subtitle = "waiting for capture trigger"
+
         else:
             theme_name = "gray"
-            value_text = status if status else "IDLE"
+            value_text = "IDLE"
+            subtitle = "no active place"
+
+        moving = value_text.startswith("MOVING TO")
 
         self.set_named_box(
             self.capture_state_label,
             "Capture",
             value_text,
             theme_name,
-            subtitle=f"place: {place}",
+            subtitle=subtitle,
+            value_size=24 if moving else 30,
+            title_size=16,
+            subtitle_size=15,
         )
 
     def set_audio_event_box(self):
@@ -922,7 +998,6 @@ class SecurityRobotGui(QWidget):
 
         status = (self.ui_state.get("audio_event_status") or "IDLE").strip().upper()
 
-        # 데모용: 오디오 이벤트는 5초 동안 강조 후 IDLE처럼 표시
         if status in ["DETECTED", "IGNORED"] and elapsed > self.audio_event_hold_sec:
             status = "IDLE"
 
@@ -959,53 +1034,8 @@ class SecurityRobotGui(QWidget):
             subtitle=subtitle,
         )
 
-    def set_footer_status_bar(self):
-        pose = self.fmt_pose(
-            self.ui_state.get("robot_x"),
-            self.ui_state.get("robot_y"),
-            self.ui_state.get("robot_yaw"),
-        )
-        goal = self.fmt_pose(
-            self.ui_state.get("goal_x"),
-            self.ui_state.get("goal_y"),
-            self.ui_state.get("goal_yaw"),
-        )
-
-        next_place = self.ui_state.get("next_place_id") or "-"
-        robot_status = self.ui_state.get("robot_status") or "-"
-        command = self.ui_state.get("patrol_command") or "-"
-
-        html = (
-            f"<span style='color:#93c5fd; font-weight:900;'>POSE</span> "
-            f"<span style='color:#ffffff;'>{pose}</span>"
-            f"<span style='color:#64748b;'>  |  </span>"
-            f"<span style='color:#86efac; font-weight:900;'>GOAL</span> "
-            f"<span style='color:#ffffff;'>{goal}</span>"
-            f"<span style='color:#64748b;'>  |  </span>"
-            f"<span style='color:#facc15; font-weight:900;'>NEXT</span> "
-            f"<span style='color:#ffffff;'>{next_place}</span>"
-            f"<span style='color:#64748b;'>  |  </span>"
-            f"<span style='color:#c4b5fd; font-weight:900;'>STATUS</span> "
-            f"<span style='color:#ffffff;'>{robot_status}</span>"
-            f"<span style='color:#64748b;'>  |  </span>"
-            f"<span style='color:#f0abfc; font-weight:900;'>CMD</span> "
-            f"<span style='color:#ffffff;'>{command}</span>"
-        )
-
-        self.footer_status_label.setStyleSheet(f"""
-            QLabel {{
-                background-color: {DARK_BG};
-                border: 2px solid {DARK_BORDER};
-                border-radius: 12px;
-                padding: 8px;
-                font-size: 12px;
-                font-weight: 800;
-            }}
-        """)
-        self.footer_status_label.setText(html)
-
     # --------------------------
-    # Auth popup
+    # Popup / Voice
     # --------------------------
     def show_auth_popup(self, title: str, subtitle: str = "", color: str = "#ffffff"):
         if subtitle:
@@ -1075,7 +1105,7 @@ class SecurityRobotGui(QWidget):
             self.show_auth_popup(
                 "추적 시작",
                 "대상자를 추적 중입니다",
-                "#4dabf7",
+                "#93c5fd",
             )
             self.play_voice_event("tracking_start")
 
@@ -1083,7 +1113,7 @@ class SecurityRobotGui(QWidget):
             self.show_auth_popup(
                 "추적 대상 상실",
                 "대상자를 다시 탐색 중입니다",
-                "#ffa94d",
+                "#fdba74",
             )
             self.play_voice_event("tracking_lost")
 
@@ -1099,25 +1129,25 @@ class SecurityRobotGui(QWidget):
             self.show_auth_popup(
                 "2차 인증 시작",
                 "RFID 카드를 태그하세요",
-                "#4dabf7",
+                "#93c5fd",
             )
         elif current_auth_status == "success":
             self.show_auth_popup(
                 "인증 성공",
                 "출입 권한이 확인되었습니다",
-                "#20c997",
+                "#86efac",
             )
         elif current_auth_status == "fail":
             self.show_auth_popup(
                 "인증 실패",
                 "등록되지 않은 카드입니다",
-                "#ff4d6d",
+                "#fca5a5",
             )
         elif current_auth_status == "timeout":
             self.show_auth_popup(
                 "인증 시간 초과",
                 "RFID 태그가 감지되지 않았습니다",
-                "#ffa94d",
+                "#fdba74",
             )
 
     def resizeEvent(self, event):
@@ -1367,6 +1397,8 @@ class SecurityRobotGui(QWidget):
             self.refresh_map()
             self.last_map_render_time = now
 
+        self.set_robot_goal_box()
+
         self.set_capture_box()
         self.set_audio_event_box()
 
@@ -1376,16 +1408,14 @@ class SecurityRobotGui(QWidget):
         self.set_mode_badge(
             self.yolo_enable_label,
             "YOLO MODE",
-            bool(self.ui_state.get("yolo_enable")),
+            self.ui_state.get("yolo_enable"),
         )
 
         self.set_mode_badge(
             self.audio_upload_label,
             "AUDIO MODE",
-            bool(self.ui_state.get("audio_upload_enable")),
+            self.ui_state.get("audio_upload_enable"),
         )
-
-        self.set_footer_status_bar()
 
         self.handle_tracking_popup_event()
         self.handle_auth_popup_event()
