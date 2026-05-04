@@ -6,6 +6,8 @@ import sys
 import json
 import math
 import threading
+import subprocess
+import pygame
 from typing import Optional
 
 import cv2
@@ -75,7 +77,6 @@ class GuiState:
         self.map_origin_y: Optional[float] = None
         self.map_origin_yaw: float = 0.0
         self.map_path: str = ""
-
 
 # ==========================================================
 # ROS subscriber node
@@ -150,6 +151,7 @@ class RobotGuiRosNode(Node):
     # --------------------------
     # Map loading
     # --------------------------
+
     def load_map_yaml(self, map_yaml_path: str):
         if not map_yaml_path:
             self.get_logger().warn("[MAP] map_yaml_path is empty. Map viewer disabled.")
@@ -310,6 +312,24 @@ class SecurityRobotGui(QWidget):
 
         # 팝업 중복 표시 방지용
         self.last_popup_auth_status = None
+        self.last_follow_state = None
+
+        # 음성 안내
+        self.voice_dir = "/home/chan/capston_h3c_integration/src/robot_gui/audio"
+        self.last_voice_key = None
+
+        self.voice_files = {
+            "tracking_start": "tracking_start.wav",
+            "tracking_lost": "tracking_lost.wav",
+        }
+
+        try:
+            pygame.mixer.init()
+            self.voice_enabled = True
+            print("[VOICE] pygame mixer initialized")
+        except Exception as e:
+            self.voice_enabled = False
+            print(f"[VOICE WARN] pygame mixer init failed: {e}")
 
         self.camera_label = QLabel("Waiting for /person_tracking/annotated ...")
         self.camera_label.setAlignment(Qt.AlignCenter)
@@ -651,6 +671,60 @@ class SecurityRobotGui(QWidget):
         self.auth_popup_anim.setStartValue(1.0)
         self.auth_popup_anim.setEndValue(0.0)
         self.auth_popup_anim.start()
+    
+    def play_voice_event(self, event_key: str):
+        if not getattr(self, "voice_enabled", False):
+            return
+
+        if event_key == self.last_voice_key:
+            return
+
+        self.last_voice_key = event_key
+
+        filename = self.voice_files.get(event_key)
+        if not filename:
+            print(f"[VOICE WARN] unknown event_key: {event_key}")
+            return
+
+        path = os.path.join(self.voice_dir, filename)
+
+        if not os.path.isfile(path):
+            print(f"[VOICE WARN] file not found: {path}")
+            return
+
+        try:
+            pygame.mixer.music.load(path)
+            pygame.mixer.music.play()
+            print(f"[VOICE] playing: {filename}")
+        except Exception as e:
+            print(f"[VOICE WARN] play failed: {e}")
+    
+    def handle_tracking_popup_event(self):
+        current_state = (self.state.follow_state or "").strip().upper()
+        prev_state = (self.last_follow_state or "").strip().upper()
+
+        if current_state == prev_state:
+            return
+
+        self.last_follow_state = current_state
+
+        # 첫 수신이 UNKNOWN/IDLE/LOST 상태였다가 TRACKING으로 바뀌는 모든 경우
+        if current_state == "TRACKING" and prev_state != "TRACKING":
+            self.show_auth_popup(
+                "추적 시작",
+                "대상자를 추적 중입니다",
+                "#4dabf7",
+            )
+            self.play_voice_event("tracking_start")
+
+        # 추적 중이던 대상이 사라진 경우
+        elif prev_state == "TRACKING" and current_state == "LOST":
+            self.show_auth_popup(
+                "추적 대상 상실",
+                "대상자를 다시 탐색 중입니다",
+                "#ffa94d",
+            )
+            self.play_voice_event("tracking_lost")
 
     def handle_auth_popup_event(self):
         current_auth_status = (self.state.auth_result_status or "").strip().lower()
@@ -1021,6 +1095,7 @@ class SecurityRobotGui(QWidget):
         )
 
         # 인증 상태 변화 시 중앙 팝업 표시
+        self.handle_tracking_popup_event()
         self.handle_auth_popup_event()
 
         self.audio_labels_label.setText(
