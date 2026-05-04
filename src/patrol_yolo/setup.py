@@ -25,7 +25,8 @@ setup(
             'person_tracker_node = patrol_yolo.person_tracker_node:main',
             'person_event_sender_node = patrol_yolo.person_event_sender_node:main',
             'person_detect_control_node = patrol_yolo.person_detect_control_node:main',
-            'person_following_node = patrol_yolo.person_following_node:main'
+            'person_following_node = patrol_yolo.person_following_node:main',
+            'audio_upload_control_node = patrol_yolo.audio_upload_control_node:main',
         ],
     },
 )

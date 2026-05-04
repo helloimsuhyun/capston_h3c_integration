@@ -30,11 +30,17 @@ def generate_launch_description():
         'yolo_mode',
         default_value='realsense' # 리얼센스로 변경되면 'realsense'
     )
+    # yolo / 오디오 포트
+    yolo_port_arg = DeclareLaunchArgument('yolo_port', default_value='8091')
+    audio_port_arg = DeclareLaunchArgument('audio_port', default_value='8092')
     
     # Deriving URLs from the single server_ip
     server_ip = LaunchConfiguration('server_ip')
     image_topic = LaunchConfiguration('image_topic')
     yolo_mode = LaunchConfiguration('yolo_mode')
+
+    yolo_port = LaunchConfiguration('yolo_port')
+    audio_port = LaunchConfiguration('audio_port')
 
     server_url = ['http://', server_ip, ':8000']
     signaling_url = ['http://', server_ip, ':8001']
@@ -78,9 +84,12 @@ def generate_launch_description():
         launch_arguments={
             'server_ip': server_ip,
             'mode': yolo_mode,
+            'yolo_port': yolo_port,
+            'audio_port': audio_port,
         }.items()
         # 이벤트 전송 동일하게 8000 포트
-        # 모드 변경 및 설정 변경 8091 포트 사용 중 (동일 ip)
+        # YOLO 모드 변경 및 설정 변경 8091 포트 사용 중 (동일 ip)
+        # AUDIO 모드 변경 및 설정 변경 8092 포트 사용 중 (동일 ip)
     )
 
     rfid_launch = IncludeLaunchDescription(
@@ -102,6 +111,8 @@ def generate_launch_description():
         server_ip_arg,
         image_topic_arg,
         yolo_mode_arg,
+        yolo_port_arg,
+        audio_port_arg,
 
         # 리얼센스 먼저 실행
         realsense_launch,

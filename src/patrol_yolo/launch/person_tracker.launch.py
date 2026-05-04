@@ -22,8 +22,10 @@ def generate_launch_description():
     server_ip = LaunchConfiguration('server_ip')
     server_url = ['http://', server_ip, ':8000/person_event']
 
-    notify_host = LaunchConfiguration('notify_host')
-    notify_port = LaunchConfiguration('notify_port')
+    yolo_host = LaunchConfiguration('yolo_host')
+    yolo_port = LaunchConfiguration('yolo_port')
+    audio_host = LaunchConfiguration('audio_host')
+    audio_port = LaunchConfiguration('audio_port')
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -42,15 +44,11 @@ def generate_launch_description():
             description='A single IP address to construct all server URLs.'
         ),
 
-        DeclareLaunchArgument(
-            'notify_host',
-            default_value='0.0.0.0'
-        ),
+        DeclareLaunchArgument('yolo_host', default_value='0.0.0.0'),
+        DeclareLaunchArgument('yolo_port', default_value='8091'),
 
-        DeclareLaunchArgument(
-            'notify_port',
-            default_value='8091'
-        ),
+        DeclareLaunchArgument('audio_host', default_value='0.0.0.0'),
+        DeclareLaunchArgument('audio_port', default_value='8092'),
 
         Node(
             package='patrol_yolo',
@@ -74,10 +72,27 @@ def generate_launch_description():
                     {
                     'robot_pose_topic': '/robot_pose',
                     'enable_topic': '/person_tracking/enable',
-                    'notify_host': notify_host,
-                    'notify_port': notify_port,
+                    'notify_host': yolo_host,
+                    'notify_port': yolo_port,
                     'log_region_match': True,
                     }
+            ],
+        ),
+        Node(
+            package='patrol_yolo',
+            executable='audio_upload_control_node',
+            name='audio_upload_control_node',
+            output='screen',
+            parameters=[
+                {
+                    'robot_pose_topic': '/robot_pose',
+                    'upload_enable_topic': '/sound/upload_enable',
+                    'allowed_labels_topic': '/sound/allowed_labels',
+                    'notify_host': audio_host,
+                    'notify_port': audio_port,
+                    'log_region_match': True,
+                    'start_enabled': True,
+                }
             ],
         ),
 

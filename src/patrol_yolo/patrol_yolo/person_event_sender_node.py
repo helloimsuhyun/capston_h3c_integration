@@ -39,7 +39,7 @@ class PersonEventSenderNode(Node):
         self.declare_parameter("dwell_time_sec", 10.0)
 
         # new stable person present event
-        self.declare_parameter("new_person_stable_sec", 0.5)
+        self.declare_parameter("new_person_stable_sec", 1.0)
 
         # bbox filter
         self.declare_parameter("min_bbox_w", 40)
