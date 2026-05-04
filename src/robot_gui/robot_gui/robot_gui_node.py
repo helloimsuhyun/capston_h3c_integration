@@ -273,12 +273,15 @@ class SecurityRobotGui(QWidget):
         self.robot_status_label = QLabel()
         self.goal_pose_label = QLabel()
         self.next_place_label = QLabel()
-        self.follow_state_label = QLabel()
-        self.auth_state_label = QLabel()
-        self.command_label = QLabel()
 
+        # 상태 카드
         self.yolo_enable_label = QLabel()
         self.audio_upload_label = QLabel()
+        self.follow_state_label = QLabel()
+
+        # 일반 상태 텍스트
+        self.auth_state_label = QLabel()
+        self.command_label = QLabel()
         self.audio_labels_label = QLabel()
         self.map_info_label = QLabel()
 
@@ -287,16 +290,23 @@ class SecurityRobotGui(QWidget):
             self.robot_status_label,
             self.goal_pose_label,
             self.next_place_label,
-            self.follow_state_label,
             self.auth_state_label,
             self.command_label,
-            self.yolo_enable_label,
-            self.audio_upload_label,
             self.audio_labels_label,
             self.map_info_label,
         ]:
             label.setFont(QFont("DejaVu Sans", 11))
             label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+
+        for box_label in [
+            self.yolo_enable_label,
+            self.audio_upload_label,
+            self.follow_state_label,
+        ]:
+            box_label.setAlignment(Qt.AlignCenter)
+            box_label.setMinimumHeight(86)
+            box_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            box_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
         self._build_layout()
 
@@ -336,13 +346,18 @@ class SecurityRobotGui(QWidget):
         goal_layout.addWidget(self.next_place_label)
         goal_box.setLayout(goal_layout)
 
-        perception_box = QGroupBox("Tracking / Auth / Command")
+        perception_box = QGroupBox("Tracking / Detection / Audio")
         perception_layout = QVBoxLayout()
+
+        status_row = QHBoxLayout()
+        status_row.setSpacing(8)
+        status_row.addWidget(self.yolo_enable_label)
+        status_row.addWidget(self.audio_upload_label)
+
+        perception_layout.addLayout(status_row)
         perception_layout.addWidget(self.follow_state_label)
         perception_layout.addWidget(self.auth_state_label)
         perception_layout.addWidget(self.command_label)
-        perception_layout.addWidget(self.yolo_enable_label)
-        perception_layout.addWidget(self.audio_upload_label)
         perception_layout.addWidget(self.audio_labels_label)
         perception_box.setLayout(perception_layout)
 
@@ -376,6 +391,81 @@ class SecurityRobotGui(QWidget):
     def bool_text(value: bool) -> str:
         return "ON" if value else "OFF"
 
+    def set_status_box(self, label: QLabel, title: str, value: str, on: bool):
+        if on:
+            border = "#20c997"
+            bg = "#e8fff6"
+            value_color = "#0f9d58"
+        else:
+            border = "#dc3545"
+            bg = "#fff1f3"
+            value_color = "#d90429"
+
+        label.setStyleSheet(f"""
+            QLabel {{
+                background-color: {bg};
+                border: 3px solid {border};
+                border-radius: 14px;
+                padding: 10px;
+                color: #222222;
+            }}
+        """)
+
+        label.setText(
+            f"<div style='font-size:14px; font-weight:700;'>{title}</div>"
+            f"<div style='font-size:24px; font-weight:900; color:{value_color};'>{value}</div>"
+        )
+
+    def set_tracking_box(self, label: QLabel, tracking_state: str):
+        state = (tracking_state or "").strip().upper()
+
+        if state == "TRACKING":
+            border = "#1976d2"
+            bg = "#eef6ff"
+            value_color = "#0d47a1"
+            value_text = "TRACKING"
+        elif state == "LOST":
+            border = "#f57c00"
+            bg = "#fff6e8"
+            value_color = "#e65100"
+            value_text = "LOST"
+        elif state == "IDLE":
+            border = "#6c757d"
+            bg = "#f3f4f6"
+            value_color = "#495057"
+            value_text = "IDLE"
+        else:
+            border = "#6c757d"
+            bg = "#f3f4f6"
+            value_color = "#495057"
+            value_text = state if state else "UNKNOWN"
+
+        label.setStyleSheet(f"""
+            QLabel {{
+                background-color: {bg};
+                border: 3px solid {border};
+                border-radius: 14px;
+                padding: 10px;
+                color: #222222;
+            }}
+        """)
+
+        label.setText(
+            f"<div style='font-size:14px; font-weight:700;'>Tracking</div>"
+            f"<div style='font-size:24px; font-weight:900; color:{value_color};'>{value_text}</div>"
+        )
+
+    def style_info_label(self, label: QLabel):
+        label.setStyleSheet("""
+            QLabel {
+                background-color: #fafafa;
+                border: 1px solid #d9d9d9;
+                border-radius: 10px;
+                padding: 8px;
+                color: #222222;
+            }
+        """)
+
     # --------------------------
     # Map transform / drawing
     # --------------------------
@@ -388,7 +478,7 @@ class SecurityRobotGui(QWidget):
         if resolution is None or origin_x is None or origin_y is None or map_img is None:
             return None
 
-        h, w = map_img.shape[:2]
+        h, _ = map_img.shape[:2]
 
         px = int((x - origin_x) / resolution)
         py = int(h - ((y - origin_y) / resolution))
@@ -429,10 +519,9 @@ class SecurityRobotGui(QWidget):
         if px < 0 or px >= w or py < 0 or py >= h:
             return
 
-        color = (255, 80, 20)       # BGR: bright blue
+        color = (255, 80, 20)       # BGR: blue
         outline = (255, 255, 255)
 
-        # 방향 삼각형
         tip_len = 22
         rear_len = 13
         spread = 2.45
@@ -454,12 +543,10 @@ class SecurityRobotGui(QWidget):
 
         pts = np.array([tip, left, right], dtype=np.int32)
 
-        # 외곽선 먼저, 내부 채우기
         cv2.polylines(img, [pts], True, outline, 5, cv2.LINE_AA)
         cv2.fillPoly(img, [pts], color, lineType=cv2.LINE_AA)
         cv2.polylines(img, [pts], True, outline, 2, cv2.LINE_AA)
 
-        # 현재 위치 중심점 + 강조 링
         cv2.circle(img, (px, py), 4, outline, -1)
         cv2.circle(img, (px, py), 24, color, 2, cv2.LINE_AA)
 
@@ -485,30 +572,17 @@ class SecurityRobotGui(QWidget):
 
         color = (40, 40, 255)      # BGR: red
         outline = (255, 255, 255)
+        dark = (0, 0, 120)
 
-        # 깃대
-        pole_top = (px, py - 38)
-        pole_bottom = (px, py + 16)
-        cv2.line(img, pole_top, pole_bottom, outline, 6, cv2.LINE_AA)
-        cv2.line(img, pole_top, pole_bottom, color, 3, cv2.LINE_AA)
+        # 목표 중심 타겟 링
+        cv2.circle(img, (px, py), 18, outline, 5, cv2.LINE_AA)
+        cv2.circle(img, (px, py), 18, color, 3, cv2.LINE_AA)
+        cv2.circle(img, (px, py), 8, outline, 4, cv2.LINE_AA)
+        cv2.circle(img, (px, py), 8, color, 2, cv2.LINE_AA)
+        cv2.circle(img, (px, py), 3, color, -1, cv2.LINE_AA)
 
-        # 깃발
-        flag_pts = np.array([
-            [px, py - 38],
-            [px + 38, py - 27],
-            [px, py - 16],
-        ], dtype=np.int32)
-
-        cv2.polylines(img, [flag_pts], True, outline, 5, cv2.LINE_AA)
-        cv2.fillPoly(img, [flag_pts], color, lineType=cv2.LINE_AA)
-        cv2.polylines(img, [flag_pts], True, outline, 2, cv2.LINE_AA)
-
-        # 목표 지점 링
-        cv2.circle(img, (px, py), 12, color, 3, cv2.LINE_AA)
-        cv2.circle(img, (px, py), 5, outline, -1)
-
-        # 목표 yaw 방향 작은 화살표
-        arrow_len = 28
+        # 목적지 방향 yaw 표시
+        arrow_len = 30
         end_x = int(px + arrow_len * math.cos(yaw))
         end_y = int(py - arrow_len * math.sin(yaw))
 
@@ -521,13 +595,46 @@ class SecurityRobotGui(QWidget):
             tipLength=0.35,
         )
 
-        self.draw_text_with_outline(
+        # 작은 라벨 박스
+        label = "GOAL"
+        text_pos = (px + 16, py - 16)
+
+        (tw, th), _ = cv2.getTextSize(
+            label,
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            2,
+        )
+
+        box_x1 = text_pos[0] - 5
+        box_y1 = text_pos[1] - th - 6
+        box_x2 = text_pos[0] + tw + 5
+        box_y2 = text_pos[1] + 5
+
+        cv2.rectangle(
             img,
-            "GOAL",
-            (px + 18, py + 36),
+            (box_x1, box_y1),
+            (box_x2, box_y2),
+            outline,
+            -1,
+        )
+        cv2.rectangle(
+            img,
+            (box_x1, box_y1),
+            (box_x2, box_y2),
             color,
-            scale=0.6,
-            thickness=2,
+            2,
+        )
+
+        cv2.putText(
+            img,
+            label,
+            text_pos,
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            dark,
+            2,
+            cv2.LINE_AA,
         )
 
     def refresh_map(self):
@@ -539,7 +646,6 @@ class SecurityRobotGui(QWidget):
         try:
             vis = map_img.copy()
 
-            # 현재 로봇 위치: 파란 삼각형
             if (
                 self.state.robot_x is not None
                 and self.state.robot_y is not None
@@ -552,7 +658,6 @@ class SecurityRobotGui(QWidget):
                     self.state.robot_yaw,
                 )
 
-            # 목표 위치: 빨간 깃발
             if (
                 self.state.goal_x is not None
                 and self.state.goal_y is not None
@@ -607,7 +712,25 @@ class SecurityRobotGui(QWidget):
         )
         self.next_place_label.setText(f"Next Place\n{self.state.next_place_id}")
 
-        self.follow_state_label.setText(f"Tracking State\n{self.state.follow_state}")
+        self.set_status_box(
+            self.yolo_enable_label,
+            "YOLO",
+            self.bool_text(self.state.yolo_enable),
+            self.state.yolo_enable,
+        )
+
+        self.set_status_box(
+            self.audio_upload_label,
+            "AUDIO",
+            self.bool_text(self.state.audio_upload_enable),
+            self.state.audio_upload_enable,
+        )
+
+        self.set_tracking_box(
+            self.follow_state_label,
+            self.state.follow_state,
+        )
+
         self.auth_state_label.setText(
             "Auth State\n" + self.compute_auth_text(
                 self.state.follow_state,
@@ -615,16 +738,14 @@ class SecurityRobotGui(QWidget):
             )
         )
         self.command_label.setText(f"Patrol Command\n{self.state.patrol_command}")
+        self.audio_labels_label.setText(f"Audio Labels\n{self.state.audio_allowed_labels}")
 
-        self.yolo_enable_label.setText(
-            f"YOLO Enable\n{self.bool_text(self.state.yolo_enable)}"
-        )
-        self.audio_upload_label.setText(
-            f"Audio Upload Enable\n{self.bool_text(self.state.audio_upload_enable)}"
-        )
-        self.audio_labels_label.setText(
-            f"Audio Labels\n{self.state.audio_allowed_labels}"
-        )
+        for label in [
+            self.auth_state_label,
+            self.command_label,
+            self.audio_labels_label,
+        ]:
+            self.style_info_label(label)
 
         if self.state.map_image is None:
             self.map_info_label.setText("Map\nnot loaded")
@@ -635,6 +756,7 @@ class SecurityRobotGui(QWidget):
                 f"size: {w}x{h} px | res: {self.state.map_resolution} m/px\n"
                 f"origin: ({self.state.map_origin_x}, {self.state.map_origin_y})"
             )
+        self.style_info_label(self.map_info_label)
 
     def refresh_camera(self):
         frame = self.state.latest_frame
