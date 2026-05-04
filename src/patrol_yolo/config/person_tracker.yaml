@@ -17,6 +17,7 @@ person_tracker_node:
     conf_thres: 0.35
     iou_thres: 0.45
     use_gpu: true
+    imgsz: 544
 
     enable_topic: "/person_tracking/enable"
 
@@ -49,7 +50,7 @@ person_following_node:
 
     frame_center_u: 640
 
-    min_confidence: 0.5
+    min_confidence: 0.35
     min_bbox_w: 40
     min_bbox_h: 80
 
