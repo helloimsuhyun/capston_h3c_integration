@@ -9,9 +9,9 @@ from ultralytics import YOLO
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--model", type=str, default="yolov8n.pt",
-                        help="model name or path (ex: yolov8n.pt)")
-    parser.add_argument("--imgsz", type=int, default=640,
+    parser.add_argument("--model", type=str, default="yolov8s.pt",
+                        help="model name or path (ex: yolov8s.pt)")
+    parser.add_argument("--imgsz", type=int, default=544,
                         help="input image size")
     parser.add_argument("--half", action="store_true",
                         help="use FP16")
