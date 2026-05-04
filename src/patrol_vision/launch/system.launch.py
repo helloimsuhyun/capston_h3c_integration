@@ -22,7 +22,7 @@ def generate_launch_description():
 		DeclareLaunchArgument('image_topic',default_value='/camera/color/image_raw'),
 		DeclareLaunchArgument('server_url', default_value='http://192.168.0.221:8000'),
 		DeclareLaunchArgument('signaling_url', default_value='http://192.168.0.221:8001'),
-		DeclareLaunchArgument('n_frames', default_value='5'),
+		DeclareLaunchArgument('n_frames', default_value='3'),
 		DeclareLaunchArgument('sample_dt', default_value='0.2'),
 		DeclareLaunchArgument('capture_timeout_s', default_value='5.0'),
 		DeclareLaunchArgument('post_timeout_s', default_value='10.0'),
