@@ -1,5 +1,6 @@
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, GroupAction, TimerAction
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from ament_index_python.packages import get_package_share_directory
@@ -22,25 +23,31 @@ def generate_launch_description():
 
     image_topic_arg = DeclareLaunchArgument(
         'image_topic',
-        default_value='/camera/camera/color/image_raw', # 리얼센스로 변경되면 /camera/camera/color/image_raw
+        default_value='/camera/camera/color/image_raw',
         description='Image topic used by patrol vision nodes.'
     )
 
     yolo_mode_arg = DeclareLaunchArgument(
         'yolo_mode',
-        default_value='realsense' # 리얼센스로 변경되면 'realsense'
+        default_value='realsense'
     )
-    # yolo / 오디오 포트
+
     yolo_port_arg = DeclareLaunchArgument('yolo_port', default_value='8091')
     audio_port_arg = DeclareLaunchArgument('audio_port', default_value='8092')
-    
-    # Deriving URLs from the single server_ip
+
+    # GUI 실행 여부
+    enable_gui_arg = DeclareLaunchArgument(
+        'enable_gui',
+        default_value='true',
+        description='Whether to launch robot_gui.'
+    )
+
     server_ip = LaunchConfiguration('server_ip')
     image_topic = LaunchConfiguration('image_topic')
     yolo_mode = LaunchConfiguration('yolo_mode')
-
     yolo_port = LaunchConfiguration('yolo_port')
     audio_port = LaunchConfiguration('audio_port')
+    enable_gui = LaunchConfiguration('enable_gui')
 
     server_url = ['http://', server_ip, ':8000']
     signaling_url = ['http://', server_ip, ':8001']
@@ -55,27 +62,27 @@ def generate_launch_description():
             )
         ]
     )
-    
+
     vision_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(patrol_vision_dir, 'launch', 'system.launch.py')),
         launch_arguments={
             'server_url': server_url,
             'signaling_url': signaling_url,
-            'image_topic': image_topic
+            'image_topic': image_topic,
         }.items()
     )
 
     bridge_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(patrol_bridge_dir, 'launch', 'bringup.launch.py')),
         launch_arguments={
-            'server_url': server_url
+            'server_url': server_url,
         }.items()
     )
 
     audio_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(security_audio_system_dir, 'launch', 'bringup.launch.py')),
         launch_arguments={
-            'server_url': server_url
+            'server_url': server_url,
         }.items()
     )
 
@@ -87,9 +94,6 @@ def generate_launch_description():
             'yolo_port': yolo_port,
             'audio_port': audio_port,
         }.items()
-        # 이벤트 전송 동일하게 8000 포트
-        # YOLO 모드 변경 및 설정 변경 8091 포트 사용 중 (동일 ip)
-        # AUDIO 모드 변경 및 설정 변경 8092 포트 사용 중 (동일 ip)
     )
 
     rfid_launch = IncludeLaunchDescription(
@@ -97,14 +101,15 @@ def generate_launch_description():
             os.path.join(rfid_dir, 'launch', 'rfid.launch.py')
         ),
         launch_arguments={
-            'server_url': server_url
+            'server_url': server_url,
         }.items()
     )
 
     robot_gui_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(robot_gui_dir, 'launch', 'robot_gui.launch.py')
-        )
+        ),
+        condition=IfCondition(enable_gui)
     )
 
     return LaunchDescription([
@@ -113,11 +118,10 @@ def generate_launch_description():
         yolo_mode_arg,
         yolo_port_arg,
         audio_port_arg,
+        enable_gui_arg,
 
-        # 리얼센스 먼저 실행
         realsense_launch,
 
-        # 카메라 초기화 시간 확보 후 나머지 실행
         TimerAction(
             period=3.0,
             actions=[
