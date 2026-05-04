@@ -17,7 +17,7 @@ person_tracker_node:
     conf_thres: 0.35
     iou_thres: 0.45
     use_gpu: true
-    imgsz: 560
+    imgsz: 640
 
     enable_topic: "/person_tracking/enable"
 
