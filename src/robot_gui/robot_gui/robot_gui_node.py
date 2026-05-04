@@ -53,7 +53,7 @@ class GuiState:
         self.goal_yaw: Optional[float] = None
         self.next_place_id: str = "-"
 
-        self.follow_state: str = "unknown"
+        self.follow_state: str = "IDLE"
 
         # =========================
         # 2차 인증 상태
@@ -709,7 +709,7 @@ class SecurityRobotGui(QWidget):
         self.last_follow_state = current_state
 
         # 첫 수신이 UNKNOWN/IDLE/LOST 상태였다가 TRACKING으로 바뀌는 모든 경우
-        if current_state == "TRACKING" and prev_state != "TRACKING":
+        if current_state == "TRACKING" and prev_state == "IDLE":
             self.show_auth_popup(
                 "추적 시작",
                 "대상자를 추적 중입니다",
