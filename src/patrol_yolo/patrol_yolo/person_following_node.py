@@ -79,6 +79,9 @@ class PersonFollowingNode(Node):
         self.declare_parameter("tracks_topic", "/person_tracking/tracks_json")
         self.declare_parameter("enable_topic", "/person_tracking/enable")
         self.declare_parameter("target_topic", "/person_tracking/follow_target")
+        self.declare_parameter("auth_result_topic", "/auth/result")
+        self.declare_parameter("auth_result_exclude_sec", 15.0)
+
         self.declare_parameter("state_topic", "/person_tracking/follow_state")
         self.declare_parameter("person_id_topic", "/person_tracking/follow_person_id")
 
@@ -124,6 +127,13 @@ class PersonFollowingNode(Node):
         self.tracks_topic = str(self.get_parameter("tracks_topic").value)
         self.enable_topic = str(self.get_parameter("enable_topic").value)
         self.target_topic = str(self.get_parameter("target_topic").value)
+
+        self.auth_result_topic = str(self.get_parameter("auth_result_topic").value)
+        self.auth_result_exclude_sec = float(
+            self.get_parameter("auth_result_exclude_sec").value
+        )
+
+
         self.state_topic = str(self.get_parameter("state_topic").value)
         self.person_id_topic = str(self.get_parameter("person_id_topic").value)
 
@@ -165,6 +175,8 @@ class PersonFollowingNode(Node):
 
         # 후보 id → 연속 감지 횟수
         self.candidate_hits: Dict[int, int] = {}
+        self.excluded_person_until: Dict[int, float] = {}
+        self.processed_auth_event_ids = set()
 
         # 타겟 depth 없음 연속 프레임 카운터
         self.no_depth_streak: int = 0
@@ -189,6 +201,13 @@ class PersonFollowingNode(Node):
             Bool,
             self.enable_topic,
             self._enable_callback,
+            10,
+        )
+
+        self.auth_result_sub = self.create_subscription(
+            String,
+            self.auth_result_topic,
+            self._auth_result_callback,
             10,
         )
 
@@ -245,6 +264,68 @@ class PersonFollowingNode(Node):
             )
             if not self.inference_enabled:
                 self._reset_to_idle("yolo_disabled")
+    
+    def _auth_result_callback(self, msg: String):
+        try:
+            payload = json.loads(msg.data)
+        except Exception:
+            # 예전 방식("success", "fail", "timeout")도 임시 호환
+            payload = {
+                "auth_event_id": "",
+                "status": msg.data.strip().lower(),
+            }
+
+        auth_event_id = str(payload.get("auth_event_id", "")).strip()
+        status = str(payload.get("status", "")).strip().lower()
+
+        # 허용할 인증 결과만 처리
+        if status not in ["success", "fail", "timeout"]:
+            self.get_logger().warn(
+                f"[AUTH] unknown result={status}, auth_event_id={auth_event_id}, ignore"
+            )
+            return
+
+        # 같은 auth_event_id는 반복 publish되어도 1번만 처리
+        if auth_event_id:
+            with self._lock:
+                if auth_event_id in self.processed_auth_event_ids:
+                    self.get_logger().debug(
+                        f"[AUTH] duplicate ignored auth_event_id={auth_event_id}"
+                    )
+                    return
+
+                self.processed_auth_event_ids.add(auth_event_id)
+
+        now = time.time()
+
+        with self._lock:
+            pid = self.target_id
+
+            if pid is None or pid < 0:
+                self.get_logger().warn(
+                    f"[AUTH] result={status} received but no active target | "
+                    f"auth_event_id={auth_event_id}"
+                )
+                return
+
+            # success / fail / timeout 모두 현재 추적 대상 제외
+            self.excluded_person_until[pid] = now + self.auth_result_exclude_sec
+
+            self.state = IDLE
+            self.target_id = None
+            self.lost_start_time = None
+            self.no_depth_streak = 0
+            self.candidate_hits.clear()
+            self.last_valid_target_track = None
+            self.last_valid_target_time = 0.0
+            self.last_seen_target_track = None
+            self.last_seen_target_time = 0.0
+
+        self.get_logger().info(
+            f"[AUTH] result={status} → exclude current target id={pid} "
+            f"for {self.auth_result_exclude_sec:.1f}s, "
+            f"auth_event_id={auth_event_id}, state=IDLE"
+        )
 
     def _tracks_callback(self, msg: String):
         """
@@ -483,6 +564,25 @@ class PersonFollowingNode(Node):
             self.last_seen_target_track = None
             self.last_seen_target_time = 0.0
         self.get_logger().info(f"[FSM] → IDLE reason={reason}")
+    
+    def _is_excluded_person_id_locked(self, pid: int, now: float) -> bool:
+        """
+        self._lock을 이미 잡은 상태에서만 호출해야 함.
+        인증 성공 후 TTL이 남아 있으면 True, 만료됐으면 dict에서 제거 후 False.
+        """
+        if pid < 0:
+            return False
+
+        until = self.excluded_person_until.get(pid)
+
+        if until is None:
+            return False
+
+        if now > until:
+            self.excluded_person_until.pop(pid, None)
+            return False
+
+        return True
 
     def _can_switch_id_locked(self, new_id: int, now: float) -> bool:
         """ID 스위칭 debounce 판별. _lock 보유 상태에서 호출."""
@@ -507,14 +607,23 @@ class PersonFollowingNode(Node):
     # raw값 필터링 + 타겟 선정
 
     def _filter_tracks(self, tracks: list) -> list:
-        """신뢰도, bbox 크기 기준으로 유효 트랙만 반환."""
+        """신뢰도, bbox 크기, 인증 성공 제외 ID 기준으로 유효 트랙만 반환."""
         result = []
+        now = time.time()
 
         for t in tracks:
             if float(t.get("confidence", 0.0)) < self.min_confidence:
                 continue
 
-            if int(t.get("person_id", -1)) == -1:
+            pid = int(t.get("person_id", -1))
+
+            if pid == -1:
+                continue
+
+            with self._lock:
+                is_excluded = self._is_excluded_person_id_locked(pid, now)
+
+            if is_excluded:
                 continue
 
             bbox = t.get("bbox_xyxy")

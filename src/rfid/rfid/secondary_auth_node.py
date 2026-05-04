@@ -4,6 +4,8 @@
 import os
 import time
 import subprocess
+import json
+
 from datetime import datetime
 from threading import Lock
 from typing import Optional
@@ -68,21 +70,34 @@ class SecondaryAuthNode(Node):
         self.auth_event_id: Optional[str] = None
         self.auth_started_mono: float = 0.0
 
-        self.last_auth_ready: bool = False
-        self.last_uid: Optional[str] = None
-        self.last_uid_read_ts: float = 0.0
-
         # =========================
         # ROS 인터페이스
         # =========================
         self.create_subscription(String, self.follow_person_id_topic, self.follow_person_id_cb, 10)
         self.create_subscription(Image, self.annotated_topic, self.annotated_cb, 10)
         self.create_subscription(Bool, self.auth_ready_topic, self.auth_ready_cb, 10)
+        self.auth_result_pub = self.create_publisher(
+            String,
+            "/auth/result",
+            10
+        )
+        self.last_auth_ready: bool = False
+        self.last_uid: Optional[str] = None
+        self.last_uid_read_ts: float = 0.0
+        # /auth/result 반복 publish용 상태
+        self.pending_auth_result_payload: Optional[str] = None
+        self.pending_auth_publish_count: int = 0
+        self.max_auth_publish_count: int = 5
+        
 
         # PC/SC 워밍업
         self.warmup_pcsc()
 
         self.timer = self.create_timer(self.poll_period_sec, self.poll_loop)
+        self.auth_result_timer = self.create_timer(
+            0.05,
+            self.auth_result_publish_loop
+        )
 
         self.get_logger().info(
             f'SecondaryAuthNode started | '
@@ -143,6 +158,49 @@ class SecondaryAuthNode(Node):
         if msg.data and not self.last_auth_ready:
             self.start_auth()
         self.last_auth_ready = msg.data
+    
+    def request_publish_auth_result(self, auth_event_id: str, status: str):
+        """
+        /auth/result를 JSON 문자열로 timer loop에서 짧게 여러 번 publish하도록 요청.
+        payload:
+        {"auth_event_id": "...", "status": "success|fail|timeout"}
+        """
+        payload = {
+            "auth_event_id": str(auth_event_id),
+            "status": status.strip().lower(),
+        }
+
+        with self.lock:
+            self.pending_auth_result_payload = json.dumps(payload, ensure_ascii=False)
+            self.pending_auth_publish_count = 0
+
+
+    def auth_result_publish_loop(self):
+        """
+        time.sleep() 없이 timer 기반으로 /auth/result를 0.05초 간격으로 5회 publish.
+        """
+        with self.lock:
+            payload = self.pending_auth_result_payload
+
+            if payload is None:
+                return
+
+            if self.pending_auth_publish_count >= self.max_auth_publish_count:
+                self.pending_auth_result_payload = None
+                self.pending_auth_publish_count = 0
+                return
+
+            self.pending_auth_publish_count += 1
+            count = self.pending_auth_publish_count
+
+        msg = String()
+        msg.data = payload
+        self.auth_result_pub.publish(msg)
+
+        self.get_logger().info(
+            f"[AUTH] published /auth/result "
+            f"({count}/{self.max_auth_publish_count}) {payload}"
+        )
 
     # =========================
     # 인증 시작
@@ -297,9 +355,14 @@ class SecondaryAuthNode(Node):
             if status == "success":
                 self.play_sound('/home/chan/capston_h3c_integration/src/rfid/rfid/success.wav')
                 self.get_logger().info("✅ 인증 성공! (success.wav 재생)")
+
+                self.request_publish_auth_result(auth_event_id, "success")
+                   
             elif status == "fail":
                 self.play_sound('/home/chan/capston_h3c_integration/src/rfid/rfid/fail.wav')
                 self.get_logger().info("❌ 인증 실패! (fail.wav 재생)")
+
+                self.request_publish_auth_result(auth_event_id, "fail")
 
         except Exception as e:
             self.get_logger().error(f'/auth/rfid 통신 중 치명적 오류 발생: {e}')
@@ -328,6 +391,8 @@ class SecondaryAuthNode(Node):
             
             # 🟢 타임아웃 발생 시에도 어쨌든 실패이므로 알림음을 울립니다.
             self.play_sound('/home/chan/capston_h3c_integration/src/rfid/rfid/fail.wav')
+
+            self.request_publish_auth_result(auth_event_id, "timeout")
             
         except Exception as e:
             self.get_logger().error(f'/auth/timeout failed: {e}')
