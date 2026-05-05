@@ -24,7 +24,7 @@ from rclpy.node import Node
 from cv_bridge import CvBridge
 from geometry_msgs.msg import Pose2D
 from sensor_msgs.msg import Image
-from std_msgs.msg import String, Bool
+from std_msgs.msg import String, Bool, Int32
 
 try:
     from security_audio_msgs.msg import SoundEvent
@@ -103,6 +103,7 @@ class GuiState:
         self.robot_y: Optional[float] = None
         self.robot_yaw: Optional[float] = None
         self.robot_status: str = "unknown"
+        self.battery_percent: Optional[int] = None
 
         self.pending_next_place_id: str = "-"
         self.capture_result_hold_sec: float = 2.5
@@ -156,6 +157,7 @@ class RobotGuiRosNode(Node):
         self.declare_parameter("annotated_topic", "/person_tracking/annotated")
         self.declare_parameter("robot_pose_topic", "/robot_pose")
         self.declare_parameter("robot_status_topic", "/robot_status")
+        self.declare_parameter("battery_topic", "/robot/battery")
         self.declare_parameter("goal_pose_topic", "/goal_pose_2d")
         self.declare_parameter("next_place_topic", "/next_place_id")
         self.declare_parameter("follow_state_topic", "/person_tracking/follow_state")
@@ -178,6 +180,7 @@ class RobotGuiRosNode(Node):
         annotated_topic = self.get_parameter("annotated_topic").value
         robot_pose_topic = self.get_parameter("robot_pose_topic").value
         robot_status_topic = self.get_parameter("robot_status_topic").value
+        battery_topic = self.get_parameter("battery_topic").value
         goal_pose_topic = self.get_parameter("goal_pose_topic").value
         next_place_topic = self.get_parameter("next_place_topic").value
         follow_state_topic = self.get_parameter("follow_state_topic").value
@@ -201,6 +204,7 @@ class RobotGuiRosNode(Node):
         self.create_subscription(Image, annotated_topic, self.annotated_cb, 10)
         self.create_subscription(Pose2D, robot_pose_topic, self.robot_pose_cb, 10)
         self.create_subscription(String, robot_status_topic, self.robot_status_cb, 10)
+        self.create_subscription(Int32, battery_topic, self.battery_cb, 10)
         self.create_subscription(Pose2D, goal_pose_topic, self.goal_pose_cb, 10)
         self.create_subscription(String, next_place_topic, self.next_place_cb, 10)
         self.create_subscription(String, follow_state_topic, self.follow_state_cb, 10)
@@ -234,6 +238,7 @@ class RobotGuiRosNode(Node):
         self.get_logger().info("Robot GUI ROS node started")
         self.get_logger().info(f"camera={annotated_topic}")
         self.get_logger().info(f"robot_pose={robot_pose_topic}, goal_pose={goal_pose_topic}")
+        self.get_logger().info(f"battery={battery_topic}")
         self.get_logger().info(f"auth_ready={auth_ready_topic}, auth_result={auth_result_topic}")
         self.get_logger().info(f"capture_trigger={capture_trigger_topic}, capture_done={capture_done_topic}")
         self.get_logger().info(f"sound_event={sound_event_topic}")
@@ -341,6 +346,13 @@ class RobotGuiRosNode(Node):
         value = msg.data.strip()
         with self.state.lock:
             self.state.robot_status = value if value else "idle"
+
+    def battery_cb(self, msg: Int32):
+        value = int(msg.data)
+        value = max(0, min(100, value))
+
+        with self.state.lock:
+            self.state.battery_percent = value
 
     def goal_pose_cb(self, msg: Pose2D):
         with self.state.lock:
@@ -566,6 +578,7 @@ class SecurityRobotGui(QWidget):
         """)
 
         self.robot_goal_label = QLabel()
+        self.battery_label = QLabel("BATTERY WAITING")
 
         self.capture_state_label = QLabel()
         self.audio_event_label = QLabel()
@@ -576,9 +589,14 @@ class SecurityRobotGui(QWidget):
         self.audio_upload_label = QLabel()
 
         self.robot_goal_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        self.robot_goal_label.setMinimumHeight(250)
+        self.robot_goal_label.setMinimumHeight(220)
         self.robot_goal_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.robot_goal_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+
+        self.battery_label.setAlignment(Qt.AlignCenter)
+        self.battery_label.setMinimumHeight(52)
+        self.battery_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.battery_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
         for label in [
             self.capture_state_label,
@@ -670,6 +688,7 @@ class SecurityRobotGui(QWidget):
         robot_layout = QVBoxLayout()
         robot_layout.setSpacing(8)
         robot_layout.addWidget(self.robot_goal_label)
+        robot_layout.addWidget(self.battery_label)
         robot_box.setLayout(robot_layout)
 
         event_box = QGroupBox("Capture / Audio Event")
@@ -777,6 +796,7 @@ class SecurityRobotGui(QWidget):
                 "robot_y": self.state.robot_y,
                 "robot_yaw": self.state.robot_yaw,
                 "robot_status": self.state.robot_status,
+                "battery_percent": self.state.battery_percent,
 
                 "goal_x": self.state.goal_x,
                 "goal_y": self.state.goal_y,
@@ -952,6 +972,55 @@ class SecurityRobotGui(QWidget):
             }}
         """)
         self.robot_goal_label.setText(html)
+
+    def set_battery_box(self):
+        percent = self.ui_state.get("battery_percent")
+
+        if percent is None:
+            value_text = "BATTERY  WAITING"
+            border_color = COLORS["gray"]["border"]
+            fill_color = COLORS["gray"]["bg"]
+            bg_color = "#020617"
+            text_color = TEXT_MUTED
+            stop_fill = 0.0
+            stop_empty = 0.001
+        else:
+            percent = max(0, min(100, int(percent)))
+            value_text = f"BATTERY  {percent}%"
+            bg_color = "#020617"
+            text_color = TEXT_MAIN
+
+            if percent >= 70:
+                border_color = COLORS["green"]["border"]
+                fill_color = COLORS["green"]["border"]
+            elif percent >= 30:
+                border_color = COLORS["orange"]["border"]
+                fill_color = COLORS["orange"]["border"]
+            else:
+                border_color = COLORS["red"]["border"]
+                fill_color = COLORS["red"]["border"]
+
+            stop_fill = percent / 100.0
+            stop_empty = min(1.0, stop_fill + 0.001)
+
+        self.battery_label.setStyleSheet(f"""
+            QLabel {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {fill_color},
+                    stop:{stop_fill:.3f} {fill_color},
+                    stop:{stop_empty:.3f} {bg_color},
+                    stop:1 {bg_color}
+                );
+                border: 3px solid {border_color};
+                border-radius: 14px;
+                padding: 6px;
+                color: {text_color};
+                font-size: 20px;
+                font-weight: 950;
+            }}
+        """)
+        self.battery_label.setText(value_text)
 
     def set_tracking_box(self):
         state = (self.ui_state.get("follow_state") or "").strip().upper()
@@ -1463,6 +1532,7 @@ class SecurityRobotGui(QWidget):
             self.last_map_render_time = now
 
         self.set_robot_goal_box()
+        self.set_battery_box()
 
         self.set_capture_box()
         self.set_audio_event_box()
