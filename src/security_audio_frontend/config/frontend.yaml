@@ -5,10 +5,10 @@
     post_trigger_sec: 0.5
 
     trigger_dbfs: -23.0
-    trigger_consecutive_chunks: 3
-    min_trigger_interval_sec: 1.0
+    trigger_consecutive_chunks: 2 # 3
+    min_trigger_interval_sec: 1.5 # 1.0
 
-    chunk_size: 1600
+    chunk_size: 800 # 1600
     save_dir: "/home/chan/security_audio_clips"
 
     device_name_contains: "ReSpeaker"
@@ -17,7 +17,7 @@
     channel_index: 0
 
     doa_topic: "/sound/doa_deg"
-    enable_doa_sub: true
+    enable_doa_sub: true # false
 
     # 기존 realtime DOA node와 최종 event DOA가 같은 기준이 되도록 사용
     front_offset_deg: 90.0
@@ -29,13 +29,16 @@
     voice_topic: "/sound/voice_active"
     use_vad_gate: false
 
-    # refined doa (WPE + MUSIC)
+    # refined doa
     use_refined_doa: true
     refined_doa_use_realtime_fallback: true
     refined_doa_nfft: 256
     refined_doa_mic_radius: 0.032
     refined_doa_hardware_offset_deg: -135.0
     refined_doa_mic_indices_csv: "0,1,2,3"
+
+    # WPE OFF 설정
+    # refined_doa_wpe_iterations가 0이면 WPE를 생략하고 MUSIC만 사용
     refined_doa_wpe_taps: 5
     refined_doa_wpe_delay: 2
-    refined_doa_wpe_iterations: 3
+    refined_doa_wpe_iterations: 0 # 3
