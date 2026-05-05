@@ -53,7 +53,7 @@ class AudioUploadControlNode(Node):
 
         # behavior
         self.declare_parameter("log_region_match", True)
-        self.declare_parameter("start_enabled", True)
+        self.declare_parameter("start_enabled", False)
 
         self.robot_pose_topic = str(self.get_parameter("robot_pose_topic").value)
         self.upload_enable_topic = str(self.get_parameter("upload_enable_topic").value)
@@ -71,7 +71,7 @@ class AudioUploadControlNode(Node):
         self.current_pose: Optional[Pose2D] = None
 
         # pushed config cache
-        self.audio_mode = 1
+        self.audio_mode = 2
         self.run_audio_upload_hint = True
         self.enabled_regions: List[Dict[str, Any]] = []
         self.allowed_labels: List[str] = []
