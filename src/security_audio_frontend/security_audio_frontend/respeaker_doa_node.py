@@ -21,6 +21,8 @@ class RespeakerDoaNode(Node):
         self.declare_parameter('front_offset_deg', 0.0)
         self.declare_parameter('invert_sign', False)
         self.declare_parameter('use_vad_gate', False)
+        self.declare_parameter('upload_enable_topic', '/sound/upload_enable')
+        self.declare_parameter('start_enabled', True)
 
         self.publish_rate_hz = float(self.get_parameter('publish_rate_hz').value)
         self.raw_topic = str(self.get_parameter('raw_topic').value)
@@ -29,10 +31,19 @@ class RespeakerDoaNode(Node):
         self.front_offset_deg = float(self.get_parameter('front_offset_deg').value)
         self.invert_sign = bool(self.get_parameter('invert_sign').value)
         self.use_vad_gate = bool(self.get_parameter('use_vad_gate').value)
+        self.upload_enable_topic = str(self.get_parameter('upload_enable_topic').value)
+        self.audio_enabled = bool(self.get_parameter('start_enabled').value)
 
         self.raw_pub = self.create_publisher(Float32, self.raw_topic, 10)
         self.doa_pub = self.create_publisher(Float32, self.mapped_topic, 10)
         self.voice_pub = self.create_publisher(Bool, self.voice_topic, 10)
+
+        self.create_subscription(
+            Bool,
+            self.upload_enable_topic,
+            self.upload_enable_callback,
+            10
+        )
 
         dev = usb.core.find(idVendor=0x2886, idProduct=0x0018)
         if dev is None:
@@ -43,7 +54,18 @@ class RespeakerDoaNode(Node):
         period = 1.0 / self.publish_rate_hz
         self.timer = self.create_timer(period, self.timer_callback)
 
-        self.get_logger().info('respeaker_doa_node started')
+        self.get_logger().info(
+            f'respeaker_doa_node started | upload_enable_topic={self.upload_enable_topic} | '
+            f'audio_enabled={self.audio_enabled}'
+        )
+
+    def upload_enable_callback(self, msg: Bool):
+        prev_enabled = self.audio_enabled
+        self.audio_enabled = bool(msg.data)
+
+        if prev_enabled != self.audio_enabled:
+            state_text = 'enabled' if self.audio_enabled else 'disabled'
+            self.get_logger().info(f'ReSpeaker DOA {state_text} by {self.upload_enable_topic}')
 
     def wrap_deg_pm180(self, deg: float) -> float:
         while deg > 180.0:
@@ -61,6 +83,9 @@ class RespeakerDoaNode(Node):
         return self.wrap_deg_pm180(mapped)
 
     def timer_callback(self):
+        if not self.audio_enabled:
+            return
+
         try:
             raw_deg = float(self.mic.direction)
             voice = bool(self.mic.is_voice())

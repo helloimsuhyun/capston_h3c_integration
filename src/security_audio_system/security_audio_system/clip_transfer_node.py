@@ -5,6 +5,7 @@ from typing import Optional
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Pose2D
+from std_msgs.msg import Bool
 
 from security_audio_msgs.msg import SoundEvent, TransferStatus
 from .upload_client import send_audio
@@ -16,9 +17,13 @@ class ClipTransferNode(Node):
 
         self.declare_parameter('server_url', 'http://10.162.213.189:8000')
         self.declare_parameter('pose_topic', '/robot_pose')
+        self.declare_parameter('upload_enable_topic', '/sound/upload_enable')
+        self.declare_parameter('start_enabled', True)
 
         self.server_url = self.get_parameter('server_url').value
         self.pose_topic = self.get_parameter('pose_topic').value
+        self.upload_enable_topic = str(self.get_parameter('upload_enable_topic').value)
+        self.audio_enabled = bool(self.get_parameter('start_enabled').value)
 
         self.x: Optional[float] = None
         self.y: Optional[float] = None
@@ -38,6 +43,13 @@ class ClipTransferNode(Node):
             10
         )
 
+        self.create_subscription(
+            Bool,
+            self.upload_enable_topic,
+            self.upload_enable_callback,
+            10
+        )
+
         self.status_pub = self.create_publisher(
             TransferStatus,
             '/sound/transfer_status',
@@ -45,8 +57,18 @@ class ClipTransferNode(Node):
         )
 
         self.get_logger().info(
-            f'clip_transfer_node started | server_url={self.server_url} | pose_topic={self.pose_topic}'
+            f'clip_transfer_node started | server_url={self.server_url} | '
+            f'pose_topic={self.pose_topic} | upload_enable_topic={self.upload_enable_topic} | '
+            f'audio_enabled={self.audio_enabled}'
         )
+
+    def upload_enable_callback(self, msg: Bool):
+        prev_enabled = self.audio_enabled
+        self.audio_enabled = bool(msg.data)
+
+        if prev_enabled != self.audio_enabled:
+            state_text = 'enabled' if self.audio_enabled else 'disabled'
+            self.get_logger().info(f'Clip transfer {state_text} by {self.upload_enable_topic}')
 
     def pose_callback(self, msg: Pose2D):
         self.x = float(msg.x)
@@ -69,6 +91,13 @@ class ClipTransferNode(Node):
 
     def event_callback(self, msg: SoundEvent):
         try:
+            if not self.audio_enabled:
+                self.get_logger().info(
+                    f'Skip upload: event_id={msg.event_id}, audio system disabled'
+                )
+                self.publish_status(msg.event_id, False, 'audio system disabled')
+                return
+
             if msg.label == 'ignore':
                 self.get_logger().info(
                     f'Skip upload: event_id={msg.event_id}, label=ignore'

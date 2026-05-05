@@ -4,3 +4,5 @@
     pose_topic: "/robot_pose"
     remote_host: "10.162.213.189:8000"
     method: "http"
+    upload_enable_topic: "/sound/upload_enable"
+    start_enabled: false

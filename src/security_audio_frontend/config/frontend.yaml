@@ -18,6 +18,8 @@
 
     doa_topic: "/sound/doa_deg"
     enable_doa_sub: true # false
+    upload_enable_topic: "/sound/upload_enable"
+    start_enabled: true
 
     # 기존 realtime DOA node와 최종 event DOA가 같은 기준이 되도록 사용
     front_offset_deg: 90.0

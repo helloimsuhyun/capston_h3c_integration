@@ -10,7 +10,7 @@ import sounddevice as sd
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32, Bool
 
 from security_audio_msgs.msg import AudioClipInfo
 #from .doa_wpe_music import WpeMusicDoaEstimator
@@ -59,6 +59,8 @@ class AudioFrontendNode(Node):
 
         self.declare_parameter('doa_topic', '/sound/doa_deg')
         self.declare_parameter('enable_doa_sub', True)
+        self.declare_parameter('upload_enable_topic', '/sound/upload_enable')
+        self.declare_parameter('start_enabled', True)
 
         # ---- final mapping params (same convention as realtime DOA node) ----
         self.declare_parameter('front_offset_deg', 0.0)
@@ -92,6 +94,8 @@ class AudioFrontendNode(Node):
 
         self.doa_topic = str(self.get_parameter('doa_topic').value)
         self.enable_doa_sub = bool(self.get_parameter('enable_doa_sub').value)
+        self.upload_enable_topic = str(self.get_parameter('upload_enable_topic').value)
+        self.audio_enabled = bool(self.get_parameter('start_enabled').value)
 
         self.front_offset_deg = float(self.get_parameter('front_offset_deg').value)
         self.invert_sign = bool(self.get_parameter('invert_sign').value)
@@ -150,6 +154,13 @@ class AudioFrontendNode(Node):
         if self.enable_doa_sub:
             self.create_subscription(Float32, self.doa_topic, self.doa_callback, 10)
 
+        self.create_subscription(
+            Bool,
+            self.upload_enable_topic,
+            self.upload_enable_callback,
+            10
+        )
+
         self.clip_pub = self.create_publisher(AudioClipInfo, '/audio/clip_info', 10)
 
         self.refined_doa_estimator = None
@@ -185,7 +196,10 @@ class AudioFrontendNode(Node):
             f'channel_index={self.channel_index}, '
             f'sample_rate={self.sample_rate}'
         )
-        self.get_logger().info('audio_frontend_node started')
+        self.get_logger().info(
+            f'audio_frontend_node started | upload_enable_topic={self.upload_enable_topic} | '
+            f'audio_enabled={self.audio_enabled}'
+        )
 
     def resolve_input_device(self):
         devices = sd.query_devices()
@@ -208,6 +222,35 @@ class AudioFrontendNode(Node):
 
     def doa_callback(self, msg: Float32):
         self.latest_doa_deg = float(msg.data)
+
+    def reset_audio_state_locked(self):
+        self.ring_buffer.clear()
+        self.multi_ring_buffer.clear()
+        self.post_buffer = []
+        self.multi_post_buffer = []
+        self.collecting_post = False
+        self.completed_events.clear()
+        self.current_event_id = None
+        self.current_level_dbfs = -100.0
+        self.current_doa_deg = 0.0
+        self.current_trigger_ros_time_ns = 0
+        self.current_pre_audio = None
+        self.current_pre_multi = None
+        self.consecutive_hit_count = 0
+
+    def upload_enable_callback(self, msg: Bool):
+        enabled = bool(msg.data)
+
+        with self.lock:
+            prev_enabled = self.audio_enabled
+            self.audio_enabled = enabled
+
+            if not enabled:
+                self.reset_audio_state_locked()
+
+        if prev_enabled != enabled:
+            state_text = 'enabled' if enabled else 'disabled'
+            self.get_logger().info(f'Audio frontend {state_text} by {self.upload_enable_topic}')
 
     @staticmethod
     def wrap_deg_pm180(deg: float) -> float:
@@ -233,6 +276,9 @@ class AudioFrontendNode(Node):
         now = time.monotonic()
 
         with self.lock:
+            if not self.audio_enabled:
+                return
+
             self.ring_buffer.extend(audio_chunk.tolist())
             self.multi_ring_buffer.extend(frame_matrix.tolist())
 
@@ -347,6 +393,9 @@ class AudioFrontendNode(Node):
 
     def flush_completed_events(self):
         with self.lock:
+            if not self.audio_enabled:
+                self.completed_events.clear()
+                return
             if not self.completed_events:
                 return
             events = self.completed_events[:]

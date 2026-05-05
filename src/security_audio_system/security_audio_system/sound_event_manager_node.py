@@ -1,5 +1,6 @@
 import rclpy
 from rclpy.node import Node
+from std_msgs.msg import Bool
 
 from security_audio_msgs.msg import AudioClipInfo, SoundClassification, SoundEvent
 
@@ -7,6 +8,12 @@ from security_audio_msgs.msg import AudioClipInfo, SoundClassification, SoundEve
 class SoundEventManagerNode(Node):
     def __init__(self):
         super().__init__('sound_event_manager_node')
+
+        self.declare_parameter('upload_enable_topic', '/sound/upload_enable')
+        self.declare_parameter('start_enabled', True)
+
+        self.upload_enable_topic = str(self.get_parameter('upload_enable_topic').value)
+        self.audio_enabled = bool(self.get_parameter('start_enabled').value)
 
         self.clip_cache = {}
         self.cls_cache = {}
@@ -31,17 +38,50 @@ class SoundEventManagerNode(Node):
             10
         )
 
-        self.get_logger().info('sound_event_manager_node started')
+        self.create_subscription(
+            Bool,
+            self.upload_enable_topic,
+            self.upload_enable_callback,
+            10
+        )
+
+        self.get_logger().info(
+            f'sound_event_manager_node started | upload_enable_topic={self.upload_enable_topic} | '
+            f'audio_enabled={self.audio_enabled}'
+        )
+
+    def upload_enable_callback(self, msg: Bool):
+        prev_enabled = self.audio_enabled
+        self.audio_enabled = bool(msg.data)
+
+        if not self.audio_enabled:
+            self.clip_cache.clear()
+            self.cls_cache.clear()
+
+        if prev_enabled != self.audio_enabled:
+            state_text = 'enabled' if self.audio_enabled else 'disabled'
+            self.get_logger().info(f'Sound event manager {state_text} by {self.upload_enable_topic}')
 
     def clip_callback(self, msg: AudioClipInfo):
+        if not self.audio_enabled:
+            return
+
         self.clip_cache[msg.event_id] = msg
         self.try_publish_event(msg.event_id)
 
     def classification_callback(self, msg: SoundClassification):
+        if not self.audio_enabled:
+            return
+
         self.cls_cache[msg.event_id] = msg
         self.try_publish_event(msg.event_id)
 
     def try_publish_event(self, event_id: str):
+        if not self.audio_enabled:
+            self.clip_cache.pop(event_id, None)
+            self.cls_cache.pop(event_id, None)
+            return
+
         if event_id not in self.clip_cache:
             return
         if event_id not in self.cls_cache:
